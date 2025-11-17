@@ -484,3 +484,49 @@ class TestModelRelationships:
         # Verify ordering
         assert list(area.topics.all()) == [topico2, topico1]
         assert list(topico1.tracks.all()) == [trilha2, trilha1]
+
+
+@pytest.mark.django_db
+@pytest.mark.unit
+class TestAlternativaValidation:
+    """Test validation logic for the Alternativa model."""
+
+    def test_prevent_multiple_correct_answers_on_create(self):
+        """Test validation prevents creating multiple correct answers."""
+        questao = QuestaoFactory()
+        CorrectAlternativaFactory(question=questao)
+
+        # Try to create another correct answer
+        with pytest.raises(ValidationError, match="This question already has a correct answer."):
+            CorrectAlternativaFactory(question=questao).full_clean()
+
+    def test_prevent_multiple_correct_answers_on_update(self):
+        """Test validation prevents updating to multiple correct answers."""
+        questao = QuestaoFactory()
+        CorrectAlternativaFactory(question=questao)
+        incorrect_choice = AlternativaFactory(question=questao, is_correct=False)
+
+        # Try to mark the incorrect answer as correct
+        incorrect_choice.is_correct = True
+        with pytest.raises(ValidationError, match="This question already has a correct answer."):
+            incorrect_choice.full_clean()
+
+    def test_prevent_removing_last_correct_answer(self):
+        """Test validation prevents removing the last correct answer."""
+        questao = QuestaoFactory()
+        correct_choice = CorrectAlternativaFactory(question=questao)
+        AlternativaFactory(question=questao, is_correct=False)
+
+        # Try to unmark the only correct answer
+        correct_choice.is_correct = False
+        with pytest.raises(ValidationError, match="A question must have at least one correct answer."):
+            correct_choice.full_clean()
+
+    def test_allow_saving_correct_answer(self):
+        """Test that saving an existing correct answer is allowed."""
+        correct_choice = CorrectAlternativaFactory()
+        correct_choice.text = "Updated text"
+        try:
+            correct_choice.full_clean()
+        except ValidationError:
+            pytest.fail("Saving a correct answer raised a ValidationError unexpectedly.")
