@@ -1,4 +1,6 @@
 from django.db import models
+from django.contrib.auth.models import User
+from django.utils import timezone
 
 class Area(models.Model):
     title = models.CharField(max_length=150, verbose_name="Título")
@@ -84,3 +86,65 @@ class Alternativa(models.Model):
 
     def __str__(self):
         return self.text
+
+
+class UserProgress(models.Model):
+    """Track user progress through learning steps."""
+
+    COMPLETED = 'completed'
+    IN_PROGRESS = 'in_progress'
+    STATUS_CHOICES = (
+        (COMPLETED, 'Completed'),
+        (IN_PROGRESS, 'In Progress'),
+    )
+
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='progress',
+        verbose_name="Usuário"
+    )
+    step = models.ForeignKey(
+        Passo,
+        on_delete=models.CASCADE,
+        related_name='user_progress',
+        verbose_name="Passo"
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default=IN_PROGRESS,
+        verbose_name="Status"
+    )
+    completed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Completado em"
+    )
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name="Criado em"
+    )
+    updated_at = models.DateTimeField(
+        auto_now=True,
+        verbose_name="Atualizado em"
+    )
+
+    class Meta:
+        verbose_name = "Progresso do Usuário"
+        verbose_name_plural = "Progressos dos Usuários"
+        ordering = ['-updated_at']
+        unique_together = ('user', 'step')
+        indexes = [
+            models.Index(fields=['user', 'status']),
+            models.Index(fields=['step', 'status']),
+        ]
+
+    def __str__(self):
+        return f"{self.user.username} - {self.step.title} ({self.status})"
+
+    def mark_as_completed(self):
+        """Mark this step as completed."""
+        self.status = self.COMPLETED
+        self.completed_at = timezone.now()
+        self.save()

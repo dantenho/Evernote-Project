@@ -4,8 +4,10 @@ Factory Boy factories for creating test data.
 import factory
 from factory.django import DjangoModelFactory
 from faker import Faker
+from django.contrib.auth.models import User
+from django.utils import timezone
 
-from learning.models import Area, Topico, Trilha, Passo, Questao, Alternativa
+from learning.models import Area, Topico, Trilha, Passo, Questao, Alternativa, UserProgress
 
 fake = Faker('pt_BR')
 
@@ -97,3 +99,45 @@ class CorrectAlternativaFactory(AlternativaFactory):
     """Factory for creating correct Alternativa instances."""
 
     is_correct = True
+
+
+class UserFactory(DjangoModelFactory):
+    """Factory for creating User instances."""
+
+    class Meta:
+        model = User
+        skip_postgeneration_save = True
+
+    username = factory.Sequence(lambda n: f"user{n}")
+    email = factory.Faker('email')
+    first_name = factory.Faker('first_name')
+    last_name = factory.Faker('last_name')
+    is_active = True
+
+    @factory.post_generation
+    def password(obj, create, extracted):
+        if not create:
+            return
+        if extracted:
+            obj.set_password(extracted)
+        else:
+            obj.set_password('testpass123')
+        obj.save()
+
+
+class UserProgressFactory(DjangoModelFactory):
+    """Factory for creating UserProgress instances."""
+
+    class Meta:
+        model = UserProgress
+
+    user = factory.SubFactory(UserFactory)
+    step = factory.SubFactory(PassoFactory)
+    status = UserProgress.IN_PROGRESS
+
+
+class CompletedProgressFactory(UserProgressFactory):
+    """Factory for creating completed UserProgress instances."""
+
+    status = UserProgress.COMPLETED
+    completed_at = factory.LazyFunction(timezone.now)
