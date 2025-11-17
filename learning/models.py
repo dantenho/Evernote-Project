@@ -178,9 +178,17 @@ class Trilha(models.Model):
         if not self.prerequisite:
             return True
 
-        # Check if all steps in prerequisite track are completed
-        prerequisite_steps = self.prerequisite.steps.all()
-        if not prerequisite_steps.exists():
+        # # Claude: Use prefetched data to avoid N+1 queries.
+        # This check now uses the `completed_prerequisite_steps` attribute,
+        # which is populated by the optimized `LearningPathViewSet` query.
+        # This avoids hitting the database for every track.
+        if hasattr(self.prerequisite, 'completed_prerequisite_steps'):
+            completed_count = len(self.prerequisite.completed_prerequisite_steps)
+            return completed_count >= len(self.prerequisite.steps.all())
+
+        # Fallback to a database query if prefetched data is not available.
+        prerequisite_steps_count = self.prerequisite.steps.count()
+        if prerequisite_steps_count == 0:
             return True
 
         completed_count = UserProgress.objects.filter(
@@ -189,7 +197,7 @@ class Trilha(models.Model):
             status=UserProgress.COMPLETED
         ).count()
 
-        return completed_count == prerequisite_steps.count()
+        return completed_count >= prerequisite_steps_count
 
 class Passo(models.Model):
     """

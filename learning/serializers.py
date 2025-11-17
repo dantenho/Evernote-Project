@@ -168,51 +168,63 @@ class UserSerializer(serializers.ModelSerializer):
 # Learning Content Serializers
 # ============================================================================
 
-class AlternativaSerializer(serializers.ModelSerializer):
+class AlternativaQuizSerializer(serializers.ModelSerializer):
     """
-    Serializer for quiz answer choices.
-
-    Note: is_correct field should be filtered in views based on user permissions.
-    Regular users should not see correct answers before submitting.
+    Serializer for quiz answer choices (for quiz takers).
+    # # Claude: This serializer explicitly omits the `is_correct` field.
+    # This is a more secure approach than conditionally popping the field,
+    # as it prevents accidental exposure of the correct answer to users
+    # taking a quiz.
     """
+    class Meta:
+        model = Alternativa
+        fields = ('id', 'text', 'order')
+        read_only_fields = ('id', 'text', 'order')
 
+
+class AlternativaResultSerializer(serializers.ModelSerializer):
+    """
+    Serializer for quiz answer choices (for results/admins).
+    # # Claude: This serializer includes the `is_correct` field.
+    # It should only be used when displaying quiz results after a user has
+    # completed a quiz or for administrative purposes.
+    """
     class Meta:
         model = Alternativa
         fields = ('id', 'text', 'is_correct', 'order')
-        read_only_fields = ('id',)
-
-    def to_representation(self, instance):
-        """
-        Customize representation based on context.
-
-        Hide is_correct for unauthenticated or non-admin users
-        unless quiz has been submitted.
-        """
-        representation = super().to_representation(instance)
-
-        # Check if we should hide the correct answer
-        request = self.context.get('request')
-        hide_correct = self.context.get('hide_correct_answers', False)
-
-        if hide_correct and not (request and request.user.is_staff):
-            representation.pop('is_correct', None)
-
-        return representation
+        read_only_fields = ('id', 'text', 'is_correct', 'order')
 
 
 class QuestaoSerializer(serializers.ModelSerializer):
     """
     Serializer for quiz questions with multiple choice answers.
-
     Includes all choices for the question, ordered appropriately.
     """
-
-    choices = AlternativaSerializer(many=True, read_only=True)
+    # # Claude: Use a SerializerMethodField to dynamically choose the serializer.
+    # This allows the same `QuestaoSerializer` to be used in different
+    # contexts (taking a quiz vs. viewing results) by selecting the
+    # appropriate `Alternativa` serializer.
+    choices = serializers.SerializerMethodField()
 
     class Meta:
         model = Questao
         fields = ('id', 'text', 'explanation', 'order', 'choices')
         read_only_fields = ('id',)
+
+    def get_choices(self, instance):
+        # # Claude: Check the context to determine which serializer to use.
+        # If `hide_correct_answers` is true, use the more restrictive
+        # serializer; otherwise, use the one that includes the correct answer.
+        hide_answers = self.context.get('hide_correct_answers', False)
+        if hide_answers:
+            serializer = AlternativaQuizSerializer(
+                instance.choices.all(), many=True
+            )
+        else:
+            serializer = AlternativaResultSerializer(
+                instance.choices.all(), many=True
+            )
+        return serializer.data
 
     def validate(self, attrs):
         """

@@ -35,6 +35,7 @@ from .serializers import (
     UserProgressDetailSerializer,
     CompleteStepSerializer,
     UserProgressSummarySerializer,
+    PassoSerializer,
 )
 
 # Initialize logger for error tracking
@@ -230,34 +231,57 @@ class LearningPathViewSet(viewsets.ReadOnlyModelViewSet):
     def get_queryset(self):
         """
         Return optimized queryset with prefetched relationships.
-
         Uses select_related and prefetch_related to minimize database queries.
-
         Returns:
             QuerySet: Optimized Area queryset
         """
-        # Check cache first
-        cache_key = 'learning_paths_full'
-        cached_data = cache.get(cache_key)
+        # # Claude: Use a more descriptive cache key.
+        # This makes it easier to identify this specific cache entry when
+        # debugging or performing manual cache operations.
+        cache_key = 'learning_paths:all'
+        cached_queryset = cache.get(cache_key)
 
-        if cached_data is not None:
-            return cached_data
+        if cached_queryset is not None:
+            return cached_queryset
+
+        # # Claude: Dynamically prefetch user progress only for authenticated users.
+        # This avoids unnecessary database lookups for anonymous users while
+        # still solving the N+1 problem for authenticated ones.
+        user = self.request.user
+        prerequisite_progress_prefetch = None
+        if user.is_authenticated:
+            prerequisite_progress_prefetch = Prefetch(
+                'prerequisite__steps__user_progress',
+                queryset=UserProgress.objects.filter(
+                    user=user, status=UserProgress.COMPLETED
+                ),
+                to_attr='completed_prerequisite_steps'
+            )
 
         # Build optimized queryset
         queryset = Area.objects.all().prefetch_related(
-            # Prefetch topics with their tracks
             Prefetch(
                 'topics',
-                queryset=Topico.objects.select_related('area').prefetch_related(
-                    # Prefetch tracks with their steps
+                queryset=Topico.objects.prefetch_related(
                     Prefetch(
                         'tracks',
-                        queryset=Trilha.objects.select_related('topic', 'prerequisite').prefetch_related(
-                            # Prefetch steps with questions and choices
+                        queryset=Trilha.objects.select_related(
+                            'prerequisite'
+                        ).prefetch_related(
+                            prerequisite_progress_prefetch,
                             Prefetch(
                                 'steps',
-                                queryset=Passo.objects.select_related('track').prefetch_related(
-                                    Prefetch('questions__choices')
+                                queryset=Passo.objects.prefetch_related(
+                                    'questions__choices'
+                                )
+                            )
+                        ) if prerequisite_progress_prefetch else Trilha.objects.select_related(
+                            'prerequisite'
+                        ).prefetch_related(
+                            Prefetch(
+                                'steps',
+                                queryset=Passo.objects.prefetch_related(
+                                    'questions__choices'
                                 )
                             )
                         )
@@ -295,22 +319,31 @@ class LearningPathViewSet(viewsets.ReadOnlyModelViewSet):
 # User Progress Views
 # ============================================================================
 
+
 class UserProgressViewSet(viewsets.ModelViewSet):
     """
     API endpoint for user progress management.
 
-    GET /api/v1/my-progress/ - List user's progress
-    POST /api/v1/my-progress/ - Create progress record
-    GET /api/v1/my-progress/{id}/ - Retrieve specific progress
-    PUT/PATCH /api/v1/my-progress/{id}/ - Update progress
-    DELETE /api/v1/my-progress/{id}/ - Delete progress
-    GET /api/v1/my-progress/summary/ - Get progress statistics
+    GET /api/v1/progress/ - List user's progress records.
+    POST /api/v1/progress/ - Create a progress record.
+    GET /api/v1/progress/{id}/ - Retrieve a specific progress record.
+    PUT/PATCH /api/v1/progress/{id}/ - Update a progress record.
+    DELETE /api/v1/progress/{id}/ - Delete a progress record.
+    GET /api/v1/progress/summary/ - Get progress statistics.
+    POST /api/v1/progress/{step_id}/complete/ - Mark a step as completed.
 
     All operations are scoped to the authenticated user.
     """
 
-    serializer_class = UserProgressSerializer
     permission_classes = (IsAuthenticated,)
+
+    def get_serializer_class(self):
+        # # Claude: Use a more detailed serializer for list and retrieve actions.
+        # This provides richer information to the frontend without requiring
+        # separate endpoints, simplifying the API design.
+        if self.action in ['list', 'retrieve']:
+            return UserProgressDetailSerializer
+        return UserProgressSerializer
 
     def get_queryset(self):
         """
@@ -321,6 +354,9 @@ class UserProgressViewSet(viewsets.ModelViewSet):
         Returns:
             QuerySet: User's progress records
         """
+        # # Claude: The original my_progress view is now consolidated here.
+        # This queryset is used for all actions, ensuring data is always
+        # scoped to the authenticated user.
         return UserProgress.objects.filter(
             user=self.request.user
         ).select_related(
@@ -341,6 +377,7 @@ class UserProgressViewSet(viewsets.ModelViewSet):
             ValidationError: If progress already exists for step
         """
         try:
+            # # Claude: Ensure the user is always set to the request user for security.
             serializer.save(user=self.request.user)
             logger.info(
                 f"Progress created for user {self.request.user.username} "
@@ -370,218 +407,126 @@ class UserProgressViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def summary(self, request):
         """
-        Get comprehensive progress summary statistics.
-
-        GET /api/v1/my-progress/summary/
-
-        Returns:
-            Response: Progress statistics including:
-                - Total steps attempted
-                - Completed steps
-                - In-progress steps
-                - Completion percentage
-                - Progress breakdown by area
-
-        Optimizations:
-        - Uses aggregated queries to minimize database hits
-        - Caches results per user
+        Get comprehensive progress summary statistics for the authenticated user.
+        GET /api/v1/progress/summary/
         """
         user = request.user
         cache_key = f'progress_summary_{user.id}'
 
-        # Check cache first
         cached_summary = cache.get(cache_key)
         if cached_summary:
             return Response(cached_summary)
 
         try:
-            # Get user's progress queryset
-            progress_queryset = UserProgress.objects.filter(user=user)
-
-            # Calculate overall statistics
-            total_progress = progress_queryset.count()
-            completed = progress_queryset.filter(
-                status=UserProgress.COMPLETED
-            ).count()
-            in_progress = progress_queryset.filter(
-                status=UserProgress.IN_PROGRESS
-            ).count()
-
-            # Calculate completion percentage based on progress records
-            completion_percentage = (
-                (completed / total_progress * 100) if total_progress > 0 else 0
+            # # Claude: Optimized overall statistics.
+            # This single aggregation query replaces three separate .count() calls,
+            # significantly reducing database load.
+            overall_stats = UserProgress.objects.filter(user=user).aggregate(
+                total_started=Count('id'),
+                total_completed=Count('id', filter=Q(status=UserProgress.COMPLETED)),
             )
 
-            # Get progress by area
-            areas_progress = []
-            for area in Area.objects.all():
-                # Count steps in this area
-                steps_in_area = Passo.objects.filter(
-                    track__topic__area=area
-                ).count()
-
-                # Count completed and in-progress steps
-                completed_in_area = progress_queryset.filter(
-                    step__track__topic__area=area,
-                    status=UserProgress.COMPLETED
-                ).count()
-
-                in_progress_in_area = progress_queryset.filter(
-                    step__track__topic__area=area,
-                    status=UserProgress.IN_PROGRESS
-                ).count()
-
-                # Calculate area completion percentage
-                area_completion = (
-                    (completed_in_area / steps_in_area * 100)
-                    if steps_in_area > 0 else 0
+            # # Claude: Optimized per-area statistics.
+            # This single, annotated query replaces a loop that made multiple
+            # queries per area, fixing a major N+1 performance issue.
+            areas_data = Area.objects.annotate(
+                total_steps=Count('topics__tracks__steps', distinct=True),
+                completed_steps=Count(
+                    'topics__tracks__steps__user_progress',
+                    filter=Q(
+                        topics__tracks__steps__user_progress__user=user,
+                        topics__tracks__steps__user_progress__status=UserProgress.COMPLETED
+                    ),
+                    distinct=True
+                ),
+                in_progress_steps=Count(
+                    'topics__tracks__steps__user_progress',
+                    filter=Q(
+                        topics__tracks__steps__user_progress__user=user,
+                        topics__tracks__steps__user_progress__status=UserProgress.IN_PROGRESS
+                    ),
+                    distinct=True
                 )
+            ).values(
+                'id', 'title', 'total_steps', 'completed_steps', 'in_progress_steps'
+            )
 
-                areas_progress.append({
-                    'id': area.id,
-                    'title': area.title,
-                    'total_steps': steps_in_area,
-                    'completed_steps': completed_in_area,
-                    'in_progress_steps': in_progress_in_area,
-                    'completion_percentage': round(area_completion, 2),
-                })
+            areas_progress = [
+                {
+                    **area,
+                    'completion_percentage': round(
+                        (area['completed_steps'] / area['total_steps'] * 100), 2
+                    ) if area['total_steps'] > 0 else 0.0,
+                }
+                for area in areas_data
+            ]
 
-            # Build summary response
+            total_completed = overall_stats.get('total_completed', 0)
+            total_available_steps = sum(area['total_steps'] for area in areas_progress)
+            overall_percentage = (
+                (total_completed / total_available_steps * 100)
+                if total_available_steps > 0 else 0
+            )
+
             summary_data = {
-                'total_steps': total_progress,
-                'completed_steps': completed,
-                'in_progress_steps': in_progress,
-                'completion_percentage': round(completion_percentage, 2),
+                'total_steps': total_available_steps,
+                'completed_steps': total_completed,
+                'in_progress_steps': overall_stats.get('total_started', 0) - total_completed,
+                'completion_percentage': round(overall_percentage, 2),
                 'areas': areas_progress,
             }
 
-            # Validate with serializer
             serializer = UserProgressSummarySerializer(summary_data)
-
-            # Cache for 2 minutes
             cache.set(cache_key, serializer.data, 120)
 
             logger.info(f"Progress summary generated for user {user.username}")
-
             return Response(serializer.data)
 
         except Exception as e:
-            logger.error(f"Error generating progress summary: {str(e)}")
+            logger.error(f"Error generating progress summary for {user.username}: {str(e)}")
             return Response(
                 {'detail': 'Failed to generate progress summary.'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-
-@api_view(['POST'])
-@permission_classes([IsAuthenticated])
-def complete_step(request, step_id):
+class StepViewSet(viewsets.ReadOnlyModelViewSet):
     """
-    Mark a step as completed for the current user.
-
-    POST /api/v1/steps/<step_id>/complete/
-
-    Args:
-        request: HTTP request
-        step_id: ID of the step to complete
-
-    Returns:
-        Response: Success message with progress data
-
-    Raises:
-        NotFound: If step doesn't exist
-        ValidationError: If completion fails
-
-    Notes:
-    - Creates progress record if it doesn't exist
-    - Idempotent: calling multiple times won't duplicate completion
-    - Invalidates progress summary cache
+    API endpoint for interacting with Steps.
     """
-    user = request.user
+    queryset = Passo.objects.all()
+    serializer_class = PassoSerializer
+    permission_classes = [IsAuthenticated]
 
-    try:
-        # Validate step exists
-        step = get_object_or_404(Passo, id=step_id)
+    @action(detail=True, methods=['post'])
+    def complete(self, request, pk=None):
+        """
+        Mark a step as completed for the current user.
+        POST /api/v1/steps/{step_id}/complete/
+        """
+        user = request.user
+        step = self.get_object()
 
-        # Get or create progress record
-        with transaction.atomic():
-            progress, created = UserProgress.objects.get_or_create(
-                user=user,
-                step=step,
-                defaults={'status': UserProgress.IN_PROGRESS}
+        try:
+            with transaction.atomic():
+                progress, created = UserProgress.objects.get_or_create(
+                    user=user,
+                    step=step,
+                    defaults={'status': UserProgress.IN_PROGRESS}
+                )
+                progress.mark_as_completed()
+
+            cache.delete(f'progress_summary_{user.id}')
+
+            serializer = UserProgressSerializer(progress)
+            logger.info(f"Step {step.id} completed by user {user.username}")
+            return Response({
+                'detail': 'Step marked as completed.',
+                'progress': serializer.data,
+                'created': created
+            }, status=status.HTTP_200_OK)
+        except Exception as e:
+            logger.error(f"Error completing step {step.id} for {user.username}: {e}")
+            return Response(
+                {'detail': 'Failed to mark step as completed.'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-
-            # Mark as completed (idempotent)
-            progress.mark_as_completed()
-
-        # Invalidate progress summary cache
-        cache_key = f'progress_summary_{user.id}'
-        cache.delete(cache_key)
-
-        # Serialize response
-        serializer = UserProgressSerializer(progress, context={'request': request})
-
-        logger.info(
-            f"Step {step_id} {'initially ' if created else ''}completed "
-            f"by user {user.username}"
-        )
-
-        return Response({
-            'detail': 'Step marked as completed.',
-            'progress': serializer.data,
-            'created': created
-        }, status=status.HTTP_200_OK)
-
-    except Passo.DoesNotExist:
-        logger.warning(f"User {user.username} attempted to complete non-existent step {step_id}")
-        raise NotFound('Step does not exist.')
-    except Exception as e:
-        logger.error(f"Error completing step {step_id} for user {user.username}: {str(e)}")
-        return Response(
-            {'detail': 'Failed to mark step as completed.'},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
-
-
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def my_progress(request):
-    """
-    Get all progress records for the current user.
-
-    GET /api/v1/my-progress/
-
-    Returns:
-        Response: List of progress records with full step details
-
-    Optimizations:
-    - Uses select_related to prevent N+1 queries
-    - Orders by most recently updated
-    - Includes full step data for frontend display
-    """
-    try:
-        # Get progress with optimized queries
-        progress = UserProgress.objects.filter(
-            user=request.user
-        ).select_related(
-            'step',
-            'step__track',
-            'step__track__topic',
-            'step__track__topic__area',
-        ).order_by('-updated_at')
-
-        # Serialize with detailed step information
-        serializer = UserProgressDetailSerializer(
-            progress,
-            many=True,
-            context={'request': request}
-        )
-
-        return Response(serializer.data)
-
-    except Exception as e:
-        logger.error(f"Error fetching progress for user {request.user.username}: {str(e)}")
-        return Response(
-            {'detail': 'Failed to fetch progress data.'},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )

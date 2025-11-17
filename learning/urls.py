@@ -11,13 +11,14 @@ from .views import (
     logout_view,
     LearningPathViewSet,
     UserProgressViewSet,
-    complete_step,
-    my_progress,
+    StepViewSet,
 )
 
 router = DefaultRouter()
 router.register(r'learning-paths', LearningPathViewSet, basename='learning-path')
 router.register(r'progress', UserProgressViewSet, basename='user-progress')
+router.register(r'steps', StepViewSet, basename='step')
+
 
 urlpatterns = [
     # Authentication endpoints
@@ -27,10 +28,9 @@ urlpatterns = [
     path('auth/logout/', logout_view, name='logout'),
     path('auth/profile/', UserProfileView.as_view(), name='profile'),
 
-    # User progress endpoints
-    path('my-progress/', my_progress, name='my-progress'),
-    path('steps/<int:step_id>/complete/', complete_step, name='complete-step'),
-
     # Router URLs (learning-paths, progress)
+    # # Claude: Consolidate all progress-related URLs under the router.
+    # This removes the need for separate, function-based view paths, making
+    # the URL structure cleaner and more consistent.
     path('', include(router.urls)),
 ]
