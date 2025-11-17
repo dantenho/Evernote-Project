@@ -483,6 +483,17 @@ class Alternativa(models.Model):
                     "This question already has a correct answer. "
                     "Each question must have exactly one correct answer."
                 )
+        elif not self.is_correct and self.question_id:
+            # Check if this is the only correct answer
+            existing_correct = Alternativa.objects.filter(
+                question=self.question,
+                is_correct=True
+            ).exclude(pk=self.pk)
+
+            if not existing_correct.exists():
+                raise ValidationError(
+                    "A question must have at least one correct answer."
+                )
 
 
 class UserProgress(models.Model):
