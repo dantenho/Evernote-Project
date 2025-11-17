@@ -198,9 +198,9 @@ def check_area_completion_achievement(user, area):
 
 
 @receiver(post_save, sender=UserProfile)
-def check_level_achievements(sender, instance, **kwargs):
+def check_rank_achievements(sender, instance, **kwargs):
     """
-    Check and award level milestone achievements when profile is updated.
+    Check and award rank milestone achievements when profile is updated.
 
     Args:
         sender: UserProfile model class
@@ -208,20 +208,47 @@ def check_level_achievements(sender, instance, **kwargs):
         **kwargs: Additional keyword arguments
     """
     user = instance.user
-    level = instance.level
+    rank_tier = instance.rank_tier
 
     try:
-        # Find all level milestone achievements user qualifies for
-        level_achievements = Achievement.objects.filter(
-            achievement_type=Achievement.LEVEL_MILESTONE,
-            required_value__lte=level
+        # Find all rank milestone achievements user qualifies for
+        rank_achievements = Achievement.objects.filter(
+            achievement_type=Achievement.RANK_MILESTONE,
+            required_value__lte=rank_tier
         )
 
-        for achievement in level_achievements:
+        for achievement in rank_achievements:
             award_achievement(user, achievement)
 
     except Exception as e:
-        logger.error(f"Error checking level achievements for user {user.username}: {str(e)}")
+        logger.error(f"Error checking rank achievements for user {user.username}: {str(e)}")
+
+
+@receiver(post_save, sender=UserProfile)
+def check_streak_achievements(sender, instance, **kwargs):
+    """
+    Check and award streak milestone achievements when profile is updated.
+
+    Args:
+        sender: UserProfile model class
+        instance: UserProfile instance that was saved
+        **kwargs: Additional keyword arguments
+    """
+    user = instance.user
+    current_streak = instance.current_streak
+
+    try:
+        # Find all streak milestone achievements user qualifies for
+        streak_achievements = Achievement.objects.filter(
+            achievement_type=Achievement.STREAK_MILESTONE,
+            required_value=current_streak  # Exact match for streak milestones
+        )
+
+        for achievement in streak_achievements:
+            award_achievement(user, achievement)
+
+    except Exception as e:
+        logger.error(f"Error checking streak achievements for user {user.username}: {str(e)}")
 
 
 @receiver(post_save, sender=UserProfile)

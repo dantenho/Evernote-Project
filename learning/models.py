@@ -601,7 +601,7 @@ class UserProfile(models.Model):
     """
     Extended user profile for gamification features.
 
-    Stores XP points, calculates user level, and tracks achievements.
+    Stores XP points, calculates rank tier, tracks achievements and streaks.
     One-to-one relationship with Django's User model.
     """
 
@@ -618,6 +618,22 @@ class UserProfile(models.Model):
         verbose_name="Pontos de Experiência",
         help_text="Total experience points earned"
     )
+    current_streak = models.PositiveIntegerField(
+        default=0,
+        verbose_name="Sequência Atual",
+        help_text="Current consecutive days of activity"
+    )
+    longest_streak = models.PositiveIntegerField(
+        default=0,
+        verbose_name="Maior Sequência",
+        help_text="Longest streak of consecutive days"
+    )
+    last_activity_date = models.DateField(
+        null=True,
+        blank=True,
+        verbose_name="Última Atividade",
+        help_text="Date of last activity for streak tracking"
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -629,77 +645,231 @@ class UserProfile(models.Model):
             models.Index(fields=['-xp_points']),  # For leaderboard queries
         ]
 
+    # Rank tiers configuration (XP thresholds)
+    RANK_TIERS = [
+        # (min_xp, rank_name, tier_number, color, icon)
+        (0, "Latão", 0, "#CD7F32", "🥉"),
+        (100, "Bronze III", 1, "#8B4513", "🥉"),
+        (200, "Bronze II", 2, "#A0522D", "🥉"),
+        (300, "Bronze I", 3, "#B87333", "🥉"),
+        (500, "Prata III", 4, "#A8A8A8", "🥈"),
+        (700, "Prata II", 5, "#B8B8B8", "🥈"),
+        (900, "Prata I", 6, "#C0C0C0", "🥈"),
+        (1200, "Ouro III", 7, "#DAA520", "🥇"),
+        (1600, "Ouro II", 8, "#FFD700", "🥇"),
+        (2000, "Ouro I", 9, "#FFA500", "🥇"),
+        (2500, "Platina III", 10, "#0080FF", "💎"),
+        (3200, "Platina II", 11, "#00A0FF", "💎"),
+        (4000, "Platina I", 12, "#00BFFF", "💎"),
+        (5000, "Diamante III", 13, "#00CED1", "💠"),
+        (6500, "Diamante II", 14, "#40E0D0", "💠"),
+        (8000, "Diamante I", 15, "#48D1CC", "💠"),
+        (10000, "Mestre III", 16, "#9370DB", "👑"),
+        (13000, "Mestre II", 17, "#8A2BE2", "👑"),
+        (16000, "Mestre I", 18, "#9932CC", "👑"),
+        (20000, "Grão-Mestre III", 19, "#FF00FF", "⭐"),
+        (25000, "Grão-Mestre II", 20, "#FF1493", "⭐"),
+        (30000, "Grão-Mestre I", 21, "#FF69B4", "⭐"),
+        (40000, "Lenda", 22, "#FFD700", "🏆"),
+    ]
+
     def __str__(self):
-        return f"{self.user.username} - Level {self.level} ({self.xp_points} XP)"
+        return f"{self.user.username} - {self.rank_name} ({self.xp_points} XP)"
 
     @property
-    def level(self):
+    def rank_data(self):
         """
-        Calculate user level based on XP points.
-
-        Formula: level = floor(xp_points / 100)
-        Each level requires 100 XP.
+        Get complete rank information for current XP.
 
         Returns:
-            int: Current user level (minimum 1)
+            dict: Rank data including name, tier, color, icon, progress
         """
-        return max(1, self.xp_points // 100)
+        current_rank = None
+        next_rank = None
+
+        for i, (min_xp, name, tier, color, icon) in enumerate(self.RANK_TIERS):
+            if self.xp_points >= min_xp:
+                current_rank = {
+                    'min_xp': min_xp,
+                    'name': name,
+                    'tier': tier,
+                    'color': color,
+                    'icon': icon
+                }
+                # Get next rank if exists
+                if i + 1 < len(self.RANK_TIERS):
+                    next_min_xp, next_name, next_tier, next_color, next_icon = self.RANK_TIERS[i + 1]
+                    next_rank = {
+                        'min_xp': next_min_xp,
+                        'name': next_name,
+                        'tier': next_tier,
+                        'color': next_color,
+                        'icon': next_icon
+                    }
+            else:
+                break
+
+        # Calculate progress to next rank
+        if current_rank and next_rank:
+            xp_in_current_rank = self.xp_points - current_rank['min_xp']
+            xp_needed_for_next = next_rank['min_xp'] - current_rank['min_xp']
+            progress_percentage = min(100, (xp_in_current_rank / xp_needed_for_next) * 100)
+        else:
+            xp_in_current_rank = 0
+            xp_needed_for_next = 0
+            progress_percentage = 100  # Max rank achieved
+
+        return {
+            'current': current_rank or self.RANK_TIERS[0],
+            'next': next_rank,
+            'xp_in_current_rank': xp_in_current_rank,
+            'xp_needed_for_next': xp_needed_for_next,
+            'progress_percentage': round(progress_percentage, 2)
+        }
+
+    @property
+    def rank_name(self):
+        """Get current rank name based on XP."""
+        return self.rank_data['current']['name']
+
+    @property
+    def rank_tier(self):
+        """Get current rank tier number."""
+        return self.rank_data['current']['tier']
+
+    @property
+    def rank_color(self):
+        """Get current rank color."""
+        return self.rank_data['current']['color']
+
+    @property
+    def rank_icon(self):
+        """Get current rank icon."""
+        return self.rank_data['current']['icon']
+
+    @property
+    def next_rank_name(self):
+        """Get next rank name or None if at max rank."""
+        next_rank = self.rank_data['next']
+        return next_rank['name'] if next_rank else None
+
+    @property
+    def xp_for_next_rank(self):
+        """Get XP needed to reach next rank."""
+        return self.rank_data['xp_needed_for_next']
+
+    @property
+    def progress_to_next_rank(self):
+        """Get progress percentage to next rank."""
+        return self.rank_data['progress_percentage']
+
+    # Legacy properties for backwards compatibility
+    @property
+    def level(self):
+        """Legacy property - returns rank tier number."""
+        return self.rank_tier
 
     @property
     def xp_for_current_level(self):
-        """
-        Calculate XP earned in current level.
-
-        Returns:
-            int: XP points within current level (0-99)
-        """
-        return self.xp_points % 100
+        """Legacy property - returns XP in current rank."""
+        return self.rank_data['xp_in_current_rank']
 
     @property
     def xp_for_next_level(self):
-        """
-        Calculate XP needed to reach next level.
-
-        Returns:
-            int: XP points needed for next level
-        """
-        return 100 - self.xp_for_current_level
+        """Legacy property - returns XP needed for next rank."""
+        return self.xp_for_next_rank
 
     @property
     def progress_to_next_level(self):
+        """Legacy property - returns progress to next rank."""
+        return self.progress_to_next_rank
+
+    def update_streak(self):
         """
-        Calculate progress percentage to next level.
+        Update user's activity streak.
+        Call this when user completes an activity.
 
         Returns:
-            float: Progress percentage (0-100)
+            dict: Streak information including milestone achievements
         """
-        return round(self.xp_for_current_level, 2)
+        from django.utils import timezone
+        today = timezone.now().date()
+
+        streak_info = {
+            'streak_continued': False,
+            'streak_broken': False,
+            'milestone_reached': None,
+            'current_streak': self.current_streak,
+            'longest_streak': self.longest_streak
+        }
+
+        if self.last_activity_date == today:
+            # Already active today, no change
+            return streak_info
+
+        if self.last_activity_date == today - timezone.timedelta(days=1):
+            # Consecutive day - increment streak
+            self.current_streak += 1
+            streak_info['streak_continued'] = True
+        else:
+            # Streak broken or first activity
+            if self.current_streak > 0:
+                streak_info['streak_broken'] = True
+            self.current_streak = 1
+
+        # Update longest streak if needed
+        if self.current_streak > self.longest_streak:
+            self.longest_streak = self.current_streak
+
+        # Check for milestone achievements
+        milestones = [7, 15, 30, 50, 100, 365]
+        if self.current_streak in milestones:
+            streak_info['milestone_reached'] = self.current_streak
+
+        self.last_activity_date = today
+        self.save(update_fields=['current_streak', 'longest_streak', 'last_activity_date', 'updated_at'])
+
+        return streak_info
 
     def add_xp(self, amount):
         """
-        Add experience points to user profile.
+        Add experience points to user profile and update streak.
 
         Args:
             amount: Number of XP points to add
 
         Returns:
-            dict: Information about level changes
-                - old_level: Level before adding XP
-                - new_level: Level after adding XP
-                - leveled_up: Whether user leveled up
+            dict: Information about rank changes and streak
+                - old_rank: Rank name before adding XP
+                - new_rank: Rank name after adding XP
+                - rank_up: Whether user ranked up
                 - new_xp: Total XP after addition
+                - xp_gained: Amount of XP added
+                - streak_info: Current streak information
         """
-        old_level = self.level
+        old_rank_data = self.rank_data
+        old_rank = old_rank_data['current']['name']
+
         self.xp_points += amount
         self.save(update_fields=['xp_points', 'updated_at'])
-        new_level = self.level
+
+        new_rank_data = self.rank_data
+        new_rank = new_rank_data['current']['name']
+
+        # Update streak
+        streak_info = self.update_streak()
 
         return {
-            'old_level': old_level,
-            'new_level': new_level,
-            'leveled_up': new_level > old_level,
+            'old_rank': old_rank,
+            'new_rank': new_rank,
+            'rank_up': old_rank != new_rank,
             'new_xp': self.xp_points,
-            'xp_gained': amount
+            'xp_gained': amount,
+            'streak_info': streak_info,
+            # Legacy fields for backwards compatibility
+            'old_level': old_rank_data['current']['tier'],
+            'new_level': new_rank_data['current']['tier'],
+            'leveled_up': old_rank != new_rank
         }
 
 
@@ -715,18 +885,54 @@ class Achievement(models.Model):
     FIRST_STEP = 'first_step'
     TRACK_COMPLETE = 'track_complete'
     AREA_COMPLETE = 'area_complete'
-    LEVEL_MILESTONE = 'level_milestone'
+    RANK_MILESTONE = 'rank_milestone'
     XP_MILESTONE = 'xp_milestone'
     STREAK_MILESTONE = 'streak_milestone'
+    COURSE_BADGE = 'course_badge'
 
     ACHIEVEMENT_TYPES = (
-        (FIRST_STEP, 'First Step Completed'),
-        (TRACK_COMPLETE, 'Track Completed'),
-        (AREA_COMPLETE, 'Area Completed'),
-        (LEVEL_MILESTONE, 'Level Milestone'),
-        (XP_MILESTONE, 'XP Milestone'),
-        (STREAK_MILESTONE, 'Streak Milestone'),
+        (FIRST_STEP, 'Primeiro Passo Completado'),
+        (TRACK_COMPLETE, 'Trilha Completada'),
+        (AREA_COMPLETE, 'Área Completada'),
+        (RANK_MILESTONE, 'Marco de Rank'),
+        (XP_MILESTONE, 'Marco de XP'),
+        (STREAK_MILESTONE, 'Marco de Sequência'),
+        (COURSE_BADGE, 'Badge de Curso'),
     )
+
+    # Icon choices for UI selection
+    ICON_CHOICES = [
+        ('🏆', 'Troféu'),
+        ('🥇', 'Medalha de Ouro'),
+        ('🥈', 'Medalha de Prata'),
+        ('🥉', 'Medalha de Bronze'),
+        ('⭐', 'Estrela'),
+        ('🌟', 'Estrela Brilhante'),
+        ('💫', 'Estrelas Giratórias'),
+        ('✨', 'Brilhos'),
+        ('🎯', 'Alvo'),
+        ('🎖️', 'Medalha Militar'),
+        ('👑', 'Coroa'),
+        ('💎', 'Diamante'),
+        ('💠', 'Diamante com Ponto'),
+        ('🔥', 'Fogo'),
+        ('⚡', 'Raio'),
+        ('🚀', 'Foguete'),
+        ('🎓', 'Formatura'),
+        ('📚', 'Livros'),
+        ('📖', 'Livro Aberto'),
+        ('✅', 'Check'),
+        ('💯', '100 Pontos'),
+        ('🎨', 'Arte'),
+        ('🧠', 'Cérebro'),
+        ('💪', 'Força'),
+        ('🏅', 'Medalha Esportiva'),
+        ('🌈', 'Arco-Íris'),
+        ('🔱', 'Tridente'),
+        ('⚔️', 'Espadas Cruzadas'),
+        ('🛡️', 'Escudo'),
+        ('🎪', 'Tenda de Circo'),
+    ]
 
     name = models.CharField(
         max_length=100,

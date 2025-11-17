@@ -33,39 +33,108 @@ class UserProfileSerializer(serializers.ModelSerializer):
     """
     Serializer for user profile with gamification data.
 
-    Includes XP points, calculated level, and progress to next level.
+    Includes XP points, rank information, streak tracking, and progress.
     """
 
+    # Rank information
+    rank_name = serializers.CharField(
+        read_only=True,
+        source='rank_data.current.name',
+        help_text="Current rank name (e.g., 'Bronze II', 'Ouro I')"
+    )
+    rank_tier = serializers.IntegerField(
+        read_only=True,
+        source='rank_data.current.tier',
+        help_text="Current rank tier number"
+    )
+    rank_color = serializers.CharField(
+        read_only=True,
+        source='rank_data.current.color',
+        help_text="Current rank color hex code"
+    )
+    rank_icon = serializers.CharField(
+        read_only=True,
+        source='rank_data.current.icon',
+        help_text="Current rank icon emoji"
+    )
+    next_rank_name = serializers.SerializerMethodField(
+        help_text="Next rank name or null if at max rank"
+    )
+    xp_for_next_rank = serializers.IntegerField(
+        read_only=True,
+        source='rank_data.xp_needed_for_next',
+        help_text="XP needed to reach next rank"
+    )
+    xp_in_current_rank = serializers.IntegerField(
+        read_only=True,
+        source='rank_data.xp_in_current_rank',
+        help_text="XP earned in current rank"
+    )
+    progress_to_next_rank = serializers.FloatField(
+        read_only=True,
+        source='rank_data.progress_percentage',
+        help_text="Progress percentage to next rank (0-100)"
+    )
+
+    # Legacy fields for backwards compatibility
     level = serializers.IntegerField(
         read_only=True,
-        help_text="User level calculated from XP (level = xp // 100)"
+        help_text="[Legacy] Rank tier number"
     )
     xp_for_current_level = serializers.IntegerField(
         read_only=True,
-        help_text="XP earned in current level (0-99)"
+        help_text="[Legacy] XP in current rank"
     )
     xp_for_next_level = serializers.IntegerField(
         read_only=True,
-        help_text="XP needed to reach next level"
+        help_text="[Legacy] XP needed for next rank"
     )
     progress_to_next_level = serializers.FloatField(
         read_only=True,
-        help_text="Progress percentage to next level (0-100)"
+        help_text="[Legacy] Progress to next rank"
     )
+
+    def get_next_rank_name(self, obj):
+        """Get next rank name or None."""
+        next_rank = obj.rank_data.get('next')
+        return next_rank['name'] if next_rank else None
 
     class Meta:
         model = UserProfile
         fields = (
             'id',
             'xp_points',
+            # Rank fields
+            'rank_name',
+            'rank_tier',
+            'rank_color',
+            'rank_icon',
+            'next_rank_name',
+            'xp_for_next_rank',
+            'xp_in_current_rank',
+            'progress_to_next_rank',
+            # Streak fields
+            'current_streak',
+            'longest_streak',
+            'last_activity_date',
+            # Legacy fields
             'level',
             'xp_for_current_level',
             'xp_for_next_level',
             'progress_to_next_level',
+            # Timestamps
             'created_at',
             'updated_at',
         )
-        read_only_fields = ('id', 'xp_points', 'created_at', 'updated_at')
+        read_only_fields = (
+            'id',
+            'xp_points',
+            'current_streak',
+            'longest_streak',
+            'last_activity_date',
+            'created_at',
+            'updated_at',
+        )
 
 
 # ============================================================================
