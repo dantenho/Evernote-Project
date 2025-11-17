@@ -252,14 +252,12 @@
       </div>
     </div>
 
-    <!-- Mermaid Modal (placeholder for now) -->
-    <div v-if="showMermaidModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 animate-fade-in" @click="showMermaidModal = false">
-      <div class="bg-white dark:bg-dark-card rounded-xl p-6 max-w-2xl mx-4 animate-scale-in" @click.stop>
-        <h3 class="text-xl font-bold text-gray-900 dark:text-dark-primary mb-4">Mermaid Diagram Generator</h3>
-        <p class="text-gray-600 dark:text-dark-secondary mb-4">This feature will be implemented next!</p>
-        <button @click="showMermaidModal = false" class="btn btn-primary">Close</button>
-      </div>
-    </div>
+    <!-- Mermaid Editor Modal -->
+    <MermaidEditor
+      v-if="showMermaidModal"
+      @close="showMermaidModal = false"
+      @save="handleMermaidSave"
+    />
 
     <!-- Image Gen Modal -->
     <div v-if="showImageGenModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 animate-fade-in" @click="showImageGenModal = false">
@@ -285,6 +283,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useRouter } from 'vue-router'
+import MermaidEditor from '@/components/MermaidEditor.vue'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -295,6 +294,7 @@ const analytics = ref(null)
 const showMermaidModal = ref(false)
 const showImageGenModal = ref(false)
 const showMCPModal = ref(false)
+const savedDiagrams = ref([])
 
 // Computed
 const maxActivity = computed(() => {
@@ -364,6 +364,18 @@ const loadAnalytics = async () => {
   } finally {
     loading.value = false
   }
+}
+
+const handleMermaidSave = (diagramCode) => {
+  // Save diagram to list (could save to backend in the future)
+  savedDiagrams.value.push({
+    id: Date.now(),
+    code: diagramCode,
+    created_at: new Date().toISOString()
+  })
+
+  console.log('Diagram saved:', diagramCode)
+  // Could show a success toast here
 }
 
 const refreshData = () => {
