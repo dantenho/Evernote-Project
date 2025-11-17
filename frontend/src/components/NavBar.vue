@@ -30,6 +30,14 @@
             >
               🤖 AI Generator
             </router-link>
+            <router-link
+              v-if="authStore.user?.is_staff || authStore.user?.is_superuser"
+              to="/admin"
+              class="inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium transition-colors"
+              :class="isActive('/admin')"
+            >
+              🎛️ Admin
+            </router-link>
           </div>
         </div>
 

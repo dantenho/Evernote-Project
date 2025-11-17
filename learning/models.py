@@ -801,8 +801,34 @@ class UserProfile(models.Model):
         verbose_name="Última Atividade",
         help_text="Date of last activity for streak tracking"
     )
+
+    # Avatar fields
+    avatar_url = models.URLField(
+        max_length=500,
+        null=True,
+        blank=True,
+        verbose_name="Avatar URL",
+        help_text="URL to user's custom avatar image"
+    )
+    avatar_preset = models.CharField(
+        max_length=50,
+        null=True,
+        blank=True,
+        default='👨‍💻',
+        verbose_name="Avatar Predefinido",
+        help_text="Preset avatar identifier (emoji or icon name)"
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    # Preset avatar options
+    PRESET_AVATARS = [
+        '👨‍💻', '👩‍💻', '🧑‍💻', '👨‍🎓', '👩‍🎓', '🧑‍🎓',
+        '🦸‍♂️', '🦸‍♀️', '🦸', '🧙‍♂️', '🧙‍♀️', '🧙',
+        '🐱', '🐶', '🦊', '🐼', '🐨', '🦁',
+        '🚀', '⭐', '🌟', '💎', '🏆', '🎯',
+    ]
 
     class Meta:
         verbose_name = "Perfil do Usuário"
@@ -892,6 +918,24 @@ class UserProfile(models.Model):
             'xp_in_current_rank': xp_in_current_rank,
             'xp_needed_for_next': xp_needed_for_next,
             'progress_percentage': round(progress_percentage, 2)
+        }
+
+    @property
+    def avatar(self):
+        """
+        Get user's avatar (URL if custom, otherwise preset emoji).
+
+        Returns:
+            dict: Avatar data with type and value
+        """
+        if self.avatar_url:
+            return {
+                'type': 'url',
+                'value': self.avatar_url
+            }
+        return {
+            'type': 'preset',
+            'value': self.avatar_preset or self.PRESET_AVATARS[0]
         }
 
     @property

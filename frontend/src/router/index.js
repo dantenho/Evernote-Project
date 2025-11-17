@@ -55,6 +55,12 @@ const routes = [
     name: 'AIGenerator',
     component: () => import('@/views/AIGeneratorView.vue'),
     meta: { requiresAuth: true }
+  },
+  {
+    path: '/admin',
+    name: 'AdminDashboard',
+    component: () => import('@/views/AdminDashboardView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: true }
   }
 ]
 
