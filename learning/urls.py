@@ -19,6 +19,7 @@ from .views import (
     generate_code_hint,
 )
 from . import ai_views
+from . import completion_views
 
 router = DefaultRouter()
 router.register(r'learning-paths', LearningPathViewSet, basename='learning-path')
@@ -35,6 +36,12 @@ urlpatterns = [
     # User progress endpoints
     path('my-progress/', my_progress, name='my-progress'),
     path('steps/<int:step_id>/complete/', complete_step, name='complete-step'),
+
+    # Track and Topic completion endpoints (new XP system)
+    path('tracks/<int:track_id>/complete/', completion_views.complete_track, name='complete-track'),
+    path('tracks/<int:track_id>/progress/', completion_views.track_progress, name='track-progress'),
+    path('topics/<int:topic_id>/progress/', completion_views.topic_progress, name='topic-progress'),
+    path('my-completions/stats/', completion_views.user_completion_stats, name='user-completion-stats'),
 
     # Gamification endpoints
     path('my-achievements/', my_achievements, name='my-achievements'),
