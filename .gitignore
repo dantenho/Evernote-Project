@@ -13,3 +13,11 @@ db.sqlite3
 
 # Media files
 /mediafiles/
+
+# Testing
+.pytest_cache/
+htmlcov/
+.coverage
+coverage.xml
+*.cover
+.hypothesis/
