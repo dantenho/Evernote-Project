@@ -610,11 +610,15 @@ class AIProvider(models.Model):
     GEMINI = 'gemini'
     OLLAMA = 'ollama'
     CUSTOM = 'custom'
+    TRANSFORMERS = 'transformers'
+    LANGCHAIN = 'langchain'
 
     PROVIDER_TYPES = (
         (CLAUDE, 'Claude (Anthropic)'),
         (GEMINI, 'Gemini (Google)'),
         (OLLAMA, 'Ollama (Local)'),
+        (TRANSFORMERS, 'Transformers (Hugging Face Local)'),
+        (LANGCHAIN, 'LangChain'),
         (CUSTOM, 'Custom Model'),
     )
 
@@ -1149,7 +1153,7 @@ class Achievement(models.Model):
         """
         super().clean()
 
-        if self.achievement_type in [self.LEVEL_MILESTONE, self.XP_MILESTONE]:
+        if self.achievement_type in [self.RANK_MILESTONE, self.XP_MILESTONE, self.STREAK_MILESTONE]:
             if not self.required_value:
                 raise ValidationError(
                     f"{self.get_achievement_type_display()} achievements must have a required_value."

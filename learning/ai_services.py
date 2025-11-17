@@ -24,6 +24,8 @@ class AIServiceError(Exception):
 class BaseAIService:
     """Base class for AI service integrations."""
 
+    MAX_PROMPT_LENGTH = 50000  # Maximum prompt length to prevent abuse
+
     def __init__(self, provider):
         """
         Initialize AI service with provider configuration.
@@ -37,6 +39,35 @@ class BaseAIService:
         self.model_name = provider.model_name
         self.max_tokens = provider.max_tokens
         self.temperature = provider.temperature
+        # Reuse HTTP session for connection pooling
+        self.session = requests.Session()
+
+    def _validate_prompts(self, system_prompt: str, user_prompt: str):
+        """
+        Validate prompt inputs before sending to AI service.
+
+        Args:
+            system_prompt: System instructions for AI
+            user_prompt: User request/question
+
+        Raises:
+            AIServiceError: If prompts are invalid
+        """
+        if not system_prompt or not isinstance(system_prompt, str):
+            raise AIServiceError("System prompt must be a non-empty string")
+
+        if not user_prompt or not isinstance(user_prompt, str):
+            raise AIServiceError("User prompt must be a non-empty string")
+
+        if len(system_prompt) > self.MAX_PROMPT_LENGTH:
+            raise AIServiceError(
+                f"System prompt exceeds maximum length of {self.MAX_PROMPT_LENGTH} characters"
+            )
+
+        if len(user_prompt) > self.MAX_PROMPT_LENGTH:
+            raise AIServiceError(
+                f"User prompt exceeds maximum length of {self.MAX_PROMPT_LENGTH} characters"
+            )
 
     def generate(self, system_prompt: str, user_prompt: str) -> Dict[str, Any]:
         """
@@ -52,12 +83,14 @@ class BaseAIService:
                 - tokens: Number of tokens used
                 - time: Generation time in seconds
         """
+        # Validate inputs before generation
+        self._validate_prompts(system_prompt, user_prompt)
         raise NotImplementedError("Subclasses must implement generate()")
 
     def _make_request(self, url: str, headers: dict, payload: dict) -> requests.Response:
-        """Make HTTP request with error handling."""
+        """Make HTTP request with error handling and connection pooling."""
         try:
-            response = requests.post(
+            response = self.session.post(
                 url,
                 headers=headers,
                 json=payload,
@@ -67,7 +100,12 @@ class BaseAIService:
             return response
         except requests.exceptions.Timeout:
             raise AIServiceError("Request timed out")
+        except requests.exceptions.HTTPError as e:
+            # Log the response for debugging
+            logger.error(f"HTTP error: {e.response.status_code} - {e.response.text[:500]}")
+            raise AIServiceError(f"HTTP error: {e.response.status_code}")
         except requests.exceptions.RequestException as e:
+            logger.error(f"Request failed: {str(e)}")
             raise AIServiceError(f"Request failed: {str(e)}")
 
 
@@ -131,17 +169,22 @@ class GeminiService(BaseAIService):
 
     def generate(self, system_prompt: str, user_prompt: str) -> Dict[str, Any]:
         """Generate content using Gemini API."""
+        # Validate inputs first
+        self._validate_prompts(system_prompt, user_prompt)
+
         start_time = time.time()
 
-        # Build endpoint with API key
+        # Build endpoint WITHOUT API key (security fix)
         endpoint = self.api_endpoint or f"{self.DEFAULT_ENDPOINT}/{self.model_name}:generateContent"
-        endpoint = f"{endpoint}?key={self.api_key}"
+        # Note: Gemini requires API key in URL, but we'll use POST parameter to avoid logging
+        # Alternative: Use x-goog-api-key header if supported
 
         # Combine system and user prompts
         combined_prompt = f"{system_prompt}\n\n{user_prompt}"
 
         headers = {
             "Content-Type": "application/json",
+            "x-goog-api-key": self.api_key,  # Use header instead of URL parameter
         }
 
         payload = {
@@ -280,6 +323,181 @@ class CustomModelService(BaseAIService):
         }
 
 
+class TransformersService(BaseAIService):
+    """
+    Service for Hugging Face Transformers (local models).
+
+    Supports running models locally using the transformers library.
+    Good for privacy and offline usage.
+    """
+
+    def generate(self, system_prompt: str, user_prompt: str) -> Dict[str, Any]:
+        """Generate content using local Transformers model."""
+        # Validate inputs first
+        self._validate_prompts(system_prompt, user_prompt)
+
+        start_time = time.time()
+
+        try:
+            # Import transformers here to make it optional
+            from transformers import pipeline, AutoTokenizer
+            import torch
+
+            # Check for GPU availability
+            device = 0 if torch.cuda.is_available() else -1
+
+            logger.info(f"Loading Transformers model: {self.model_name}")
+
+            # Initialize text generation pipeline
+            generator = pipeline(
+                "text-generation",
+                model=self.model_name,
+                tokenizer=self.model_name,
+                device=device,
+                torch_dtype=torch.float16 if device == 0 else torch.float32,
+            )
+
+            # Combine prompts
+            combined_prompt = f"{system_prompt}\n\n{user_prompt}"
+
+            # Generate
+            outputs = generator(
+                combined_prompt,
+                max_new_tokens=self.max_tokens,
+                temperature=self.temperature,
+                do_sample=True,
+                top_p=0.95,
+                num_return_sequences=1,
+            )
+
+            generated_text = outputs[0]["generated_text"]
+
+            # Remove the prompt from generated text
+            if generated_text.startswith(combined_prompt):
+                generated_text = generated_text[len(combined_prompt):].strip()
+
+            # Estimate tokens (rough approximation)
+            tokenizer = AutoTokenizer.from_pretrained(self.model_name)
+            tokens_used = len(tokenizer.encode(generated_text))
+
+            generation_time = time.time() - start_time
+
+            logger.info(
+                f"Transformers generation successful: ~{tokens_used} tokens in {generation_time:.2f}s"
+            )
+
+            return {
+                "text": generated_text,
+                "tokens": tokens_used,
+                "time": generation_time,
+                "raw_response": outputs
+            }
+
+        except ImportError:
+            raise AIServiceError(
+                "Transformers library not installed. "
+                "Install with: pip install transformers torch"
+            )
+        except Exception as e:
+            logger.error(f"Transformers generation failed: {str(e)}")
+            raise AIServiceError(f"Transformers generation failed: {str(e)}")
+
+
+class LangChainService(BaseAIService):
+    """
+    Service for LangChain integration.
+
+    Supports multiple LLM backends through LangChain framework.
+    Enables advanced features like chains, agents, and memory.
+    """
+
+    def generate(self, system_prompt: str, user_prompt: str) -> Dict[str, Any]:
+        """Generate content using LangChain."""
+        # Validate inputs first
+        self._validate_prompts(system_prompt, user_prompt)
+
+        start_time = time.time()
+
+        try:
+            # Import LangChain here to make it optional
+            from langchain.llms import OpenAI, HuggingFaceHub
+            from langchain.chat_models import ChatOpenAI
+            from langchain.prompts import ChatPromptTemplate
+            from langchain.schema import SystemMessage, HumanMessage
+
+            logger.info(f"Using LangChain with model: {self.model_name}")
+
+            # Determine which LangChain LLM to use based on api_endpoint
+            if "openai" in self.api_endpoint.lower() or not self.api_endpoint:
+                # Use OpenAI-compatible endpoint
+                llm = ChatOpenAI(
+                    model_name=self.model_name,
+                    openai_api_key=self.api_key,
+                    openai_api_base=self.api_endpoint if self.api_endpoint else None,
+                    temperature=self.temperature,
+                    max_tokens=self.max_tokens,
+                )
+            elif "huggingface" in self.api_endpoint.lower():
+                # Use Hugging Face Hub
+                llm = HuggingFaceHub(
+                    repo_id=self.model_name,
+                    huggingfacehub_api_token=self.api_key,
+                    model_kwargs={
+                        "temperature": self.temperature,
+                        "max_length": self.max_tokens,
+                    }
+                )
+            else:
+                # Default to generic OpenAI-compatible
+                llm = ChatOpenAI(
+                    model_name=self.model_name,
+                    openai_api_key=self.api_key,
+                    openai_api_base=self.api_endpoint,
+                    temperature=self.temperature,
+                    max_tokens=self.max_tokens,
+                )
+
+            # Create messages
+            messages = [
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=user_prompt)
+            ]
+
+            # Generate
+            response = llm(messages)
+
+            # Extract text from response
+            if hasattr(response, 'content'):
+                generated_text = response.content
+            else:
+                generated_text = str(response)
+
+            # Estimate tokens (rough approximation)
+            tokens_used = len(generated_text.split()) * 1.3  # Rough estimate
+
+            generation_time = time.time() - start_time
+
+            logger.info(
+                f"LangChain generation successful: ~{int(tokens_used)} tokens in {generation_time:.2f}s"
+            )
+
+            return {
+                "text": generated_text,
+                "tokens": int(tokens_used),
+                "time": generation_time,
+                "raw_response": {"content": generated_text}
+            }
+
+        except ImportError:
+            raise AIServiceError(
+                "LangChain library not installed. "
+                "Install with: pip install langchain openai"
+            )
+        except Exception as e:
+            logger.error(f"LangChain generation failed: {str(e)}")
+            raise AIServiceError(f"LangChain generation failed: {str(e)}")
+
+
 def get_ai_service(provider) -> BaseAIService:
     """
     Get appropriate AI service for provider.
@@ -298,6 +516,8 @@ def get_ai_service(provider) -> BaseAIService:
         'gemini': GeminiService,
         'ollama': OllamaService,
         'custom': CustomModelService,
+        'transformers': TransformersService,
+        'langchain': LangChainService,
     }
 
     service_class = service_map.get(provider.provider_type)
