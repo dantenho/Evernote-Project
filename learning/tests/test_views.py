@@ -21,6 +21,7 @@ from learning.tests.factories import (
 )
 from django.core.cache import cache
 
+# Mark all tests in this file as Django tests that require database access.
 pytestmark = pytest.mark.django_db
 
 
@@ -30,6 +31,9 @@ pytestmark = pytest.mark.django_db
 
 @pytest.mark.unit
 class TestRegisterView:
+    """
+    Test suite for the RegisterView API endpoint.
+    """
     def test_register_user_success(self):
         """
         Ensure user can register successfully with valid data.
@@ -91,6 +95,9 @@ class TestRegisterView:
 
 @pytest.mark.unit
 class TestUserProfileView:
+    """
+    Test suite for the UserProfileView API endpoint.
+    """
     def test_get_profile_authenticated(self):
         """
         Ensure authenticated user can retrieve their profile.
@@ -130,6 +137,9 @@ class TestUserProfileView:
 
 @pytest.mark.unit
 class TestLogoutView:
+    """
+    Test suite for the logout_view API endpoint.
+    """
     def test_logout_authenticated(self):
         """
         Ensure authenticated user can log out.
@@ -165,6 +175,9 @@ class TestLogoutView:
 
 @pytest.mark.integration
 class TestLearningPathViewSet:
+    """
+    Test suite for the LearningPathViewSet API endpoint.
+    """
     def test_list_learning_paths(self):
         """
         Ensure API returns a list of learning paths with nested structure.
@@ -227,6 +240,9 @@ class TestLearningPathViewSet:
 
 @pytest.mark.integration
 class TestUserProgressViewSet:
+    """
+    Test suite for the UserProgressViewSet API endpoint.
+    """
     def test_list_user_progress_authenticated(self):
         """
         Ensure authenticated user can list their own progress.
@@ -304,6 +320,9 @@ class TestUserProgressViewSet:
 
 @pytest.mark.integration
 class TestCompleteStepView:
+    """
+    Test suite for the complete_step API endpoint.
+    """
     def test_complete_step_success(self):
         """
         Ensure authenticated user can mark a step as complete.

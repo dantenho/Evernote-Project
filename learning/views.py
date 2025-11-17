@@ -99,6 +99,8 @@ class RegisterView(generics.CreateAPIView):
             }, status=status.HTTP_201_CREATED)
 
         except ValidationError as e:
+            # Catch validation errors from the serializer and re-raise them.
+            # This ensures that DRF's default error handling is used.
             logger.warning(f"Registration failed: {e.detail}")
             raise
         except Exception as e:
@@ -149,6 +151,8 @@ class UserProfileView(generics.RetrieveUpdateAPIView):
             logger.info(f"Profile updated for user: {request.user.username}")
             return response
         except ValidationError as e:
+            # Catch validation errors from the serializer and re-raise them.
+            # This ensures that DRF's default error handling is used.
             logger.warning(f"Profile update failed for {request.user.username}: {e.detail}")
             raise
         except Exception as e:
@@ -237,14 +241,16 @@ class LearningPathViewSet(viewsets.ReadOnlyModelViewSet):
         Returns:
             QuerySet: Optimized Area queryset
         """
-        # Check cache first
+        # Define a cache key for the full learning path data.
         cache_key = 'learning_paths_full'
+        # Attempt to retrieve the cached data.
         cached_data = cache.get(cache_key)
 
+        # If the data is found in the cache, return it immediately.
         if cached_data is not None:
             return cached_data
 
-        # Build optimized queryset
+        # If the data is not in the cache, build the queryset.
         queryset = Area.objects.all().prefetch_related(
             # Prefetch topics with their tracks
             Prefetch(
@@ -388,10 +394,12 @@ class UserProgressViewSet(viewsets.ModelViewSet):
         - Caches results per user
         """
         user = request.user
+        # Define a user-specific cache key for the progress summary.
         cache_key = f'progress_summary_{user.id}'
 
-        # Check cache first
+        # Attempt to retrieve the cached data.
         cached_summary = cache.get(cache_key)
+        # If the data is found in the cache, return it immediately.
         if cached_summary:
             return Response(cached_summary)
 
