@@ -202,9 +202,11 @@ class Passo(models.Model):
     # Content type constants
     LESSON = 'lesson'
     QUIZ = 'quiz'
+    CODE_CHALLENGE = 'code_challenge'
     CONTENT_CHOICES = (
         (LESSON, 'Lição'),
         (QUIZ, 'Quiz'),
+        (CODE_CHALLENGE, 'Desafio de Código'),
     )
 
     title = models.CharField(
@@ -219,7 +221,7 @@ class Passo(models.Model):
         verbose_name="Trilha"
     )
     content_type = models.CharField(
-        max_length=10,
+        max_length=20,
         choices=CONTENT_CHOICES,
         default=LESSON,
         db_index=True,  # Index for filtering by content type
@@ -250,6 +252,32 @@ class Passo(models.Model):
         validators=[MinValueValidator(0)],
         verbose_name="Ordem",
         help_text="Display order within the track"
+    )
+
+    # Code challenge fields
+    code_snippet = models.TextField(
+        blank=True,
+        null=True,
+        verbose_name="Código Inicial",
+        help_text="Initial code template for code challenges"
+    )
+    expected_output = models.TextField(
+        blank=True,
+        null=True,
+        verbose_name="Saída Esperada",
+        help_text="Expected output for code challenges"
+    )
+    solution = models.TextField(
+        blank=True,
+        null=True,
+        verbose_name="Solução",
+        help_text="Solution code (hidden from students)"
+    )
+    xp_reward = models.PositiveSmallIntegerField(
+        default=10,
+        validators=[MinValueValidator(1), MaxValueValidator(100)],
+        verbose_name="Recompensa XP",
+        help_text="XP points awarded for completing this step"
     )
 
     class Meta:

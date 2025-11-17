@@ -97,6 +97,60 @@
           </div>
         </div>
 
+        <!-- Code Challenge Content -->
+        <div v-else-if="currentStep && currentStep.content_type === 'code_challenge'" class="space-y-6 animate-fade-in">
+          <!-- Challenge Card -->
+          <div class="card bg-white shadow-xl">
+            <div class="flex items-center justify-between mb-4">
+              <h1 class="text-2xl font-bold text-gray-900">
+                💻 {{ currentStep.title }}
+              </h1>
+              <span class="px-3 py-1 bg-purple-100 text-purple-700 rounded-full text-sm font-semibold">
+                Code Challenge
+              </span>
+            </div>
+
+            <!-- Challenge Instructions -->
+            <div
+              v-if="currentStep.text_content"
+              class="prose prose-lg max-w-none mb-6"
+              v-html="currentStep.text_content"
+            ></div>
+
+            <!-- Code Editor Component -->
+            <CodeEditor
+              :initial-code="currentStep.code_snippet || '# Write your code here\\nprint(\"Hello\")'"
+              :expected-output="currentStep.expected_output"
+              :solution="currentStep.solution"
+              :show-solution="codeAttempts >= 3"
+              :hints="getCodeHints()"
+              @correct="handleCodeCorrect"
+              @run="handleCodeRun"
+              @error="handleCodeError"
+            />
+          </div>
+
+          <!-- Navigation Button -->
+          <div class="flex justify-end">
+            <button
+              v-if="codeIsCorrect"
+              @click="completeAndNext"
+              :disabled="completing"
+              class="btn btn-primary btn-lg flex items-center space-x-2 px-8 py-4 text-lg shadow-lg hover:shadow-xl transform hover:scale-105 transition-all animate-bounce-subtle"
+            >
+              <span>{{ completing ? 'Completing...' : 'Continue' }}</span>
+              <span>→</span>
+            </button>
+            <button
+              v-else
+              disabled
+              class="btn btn-secondary btn-lg flex items-center space-x-2 px-8 py-4 text-lg opacity-50 cursor-not-allowed"
+            >
+              <span>Complete the challenge to continue</span>
+            </button>
+          </div>
+        </div>
+
         <!-- Quiz Content -->
         <div v-else-if="currentStep && currentStep.content_type === 'quiz'" class="space-y-6 animate-fade-in">
           <!-- Quiz Question Card -->
@@ -222,6 +276,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { learningAPI, progressAPI } from '@/services/api'
+import CodeEditor from '@/components/CodeEditor.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -243,6 +298,11 @@ const currentQuestionIndex = ref(0)
 const answerSelected = ref(false)
 const selectedAlternative = ref(null)
 const quizAnswers = ref([])
+
+// Code challenge state
+const codeIsCorrect = ref(false)
+const codeAttempts = ref(0)
+const codeOutput = ref('')
 
 // ============================================================================
 // Computed
@@ -413,6 +473,38 @@ const completeAndNext = async () => {
   } finally {
     completing.value = false
   }
+}
+
+// Code Challenge Methods
+const handleCodeCorrect = ({ output, time }) => {
+  codeIsCorrect.value = true
+  codeOutput.value = output
+  console.log(`Code executed correctly in ${time}ms`)
+}
+
+const handleCodeRun = ({ output, time }) => {
+  codeAttempts.value++
+  codeOutput.value = output
+}
+
+const handleCodeError = (err) => {
+  codeAttempts.value++
+  console.error('Code execution error:', err)
+}
+
+const getCodeHints = () => {
+  // Return hints based on number of attempts
+  if (codeAttempts.value === 0) return []
+  if (codeAttempts.value === 1) return ['Check your syntax carefully']
+  if (codeAttempts.value === 2) return [
+    'Check your syntax carefully',
+    'Make sure you\'re using the correct function names'
+  ]
+  return [
+    'Check your syntax carefully',
+    'Make sure you\'re using the correct function names',
+    'Click "Solution" to see the correct answer'
+  ]
 }
 
 const continueToNext = () => {
