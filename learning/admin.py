@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Area, Topico, Trilha, Passo, Questao, Alternativa
+from .models import Area, Topico, Trilha, Passo, Questao, Alternativa, UserProgress
 
 class TopicoInline(admin.TabularInline):
     model = Topico
@@ -61,3 +61,12 @@ class QuestaoAdmin(admin.ModelAdmin):
 class AlternativaAdmin(admin.ModelAdmin):
     list_display = ('text', 'question', 'is_correct')
     list_filter = ('question',)
+
+
+@admin.register(UserProgress)
+class UserProgressAdmin(admin.ModelAdmin):
+    list_display = ('user', 'step', 'status', 'completed_at', 'updated_at')
+    list_filter = ('status', 'user', 'step__track__topic__area')
+    search_fields = ('user__username', 'step__title')
+    readonly_fields = ('created_at', 'updated_at', 'completed_at')
+    date_hierarchy = 'updated_at'
