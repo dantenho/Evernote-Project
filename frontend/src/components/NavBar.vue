@@ -1,5 +1,5 @@
 <template>
-  <nav class="bg-white shadow-sm border-b border-gray-200">
+  <nav class="bg-white dark:bg-dark-card shadow-sm border-b border-gray-200 dark:border-dark transition-colors duration-300">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <div class="flex justify-between h-16">
         <div class="flex">
@@ -11,21 +11,21 @@
           <div class="hidden sm:ml-8 sm:flex sm:space-x-8">
             <router-link
               to="/dashboard"
-              class="inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium"
+              class="inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium transition-colors"
               :class="isActive('/dashboard')"
             >
               Dashboard
             </router-link>
             <router-link
               to="/progress"
-              class="inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium"
+              class="inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium transition-colors"
               :class="isActive('/progress')"
             >
               My Progress
             </router-link>
             <router-link
               to="/ai-generator"
-              class="inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium"
+              class="inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium transition-colors"
               :class="isActive('/ai-generator')"
             >
               🤖 AI Generator
@@ -34,7 +34,7 @@
         </div>
 
         <div class="flex items-center space-x-4">
-          <div class="text-sm text-gray-700">
+          <div class="text-sm text-gray-700 dark:text-dark-secondary">
             👋 {{ authStore.user?.first_name || 'User' }}
           </div>
 
@@ -95,9 +95,25 @@
             </span>
           </div>
 
+          <!-- Theme Toggle Button -->
+          <button
+            @click="toggleTheme"
+            class="text-gray-600 hover:text-gray-900 dark:text-dark-secondary dark:hover:text-dark-primary transition-colors p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-dark-hover"
+            title="Toggle dark mode"
+          >
+            <!-- Sun icon (shown in dark mode) -->
+            <svg v-if="isDark" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+            </svg>
+            <!-- Moon icon (shown in light mode) -->
+            <svg v-else class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+            </svg>
+          </button>
+
           <router-link
             to="/profile"
-            class="text-gray-600 hover:text-gray-900"
+            class="text-gray-600 hover:text-gray-900 dark:text-dark-secondary dark:hover:text-dark-primary transition-colors"
           >
             <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
@@ -105,7 +121,7 @@
           </router-link>
           <button
             @click="handleLogout"
-            class="text-gray-600 hover:text-gray-900"
+            class="text-gray-600 hover:text-gray-900 dark:text-dark-secondary dark:hover:text-dark-primary transition-colors"
           >
             <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
@@ -120,15 +136,17 @@
 <script setup>
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { useTheme } from '@/composables/useTheme'
 
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
+const { isDark, toggleTheme } = useTheme()
 
 const isActive = (path) => {
   return route.path === path
-    ? 'border-primary-500 text-gray-900'
-    : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
+    ? 'border-primary-500 text-gray-900 dark:text-dark-primary'
+    : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:text-dark-secondary dark:hover:text-dark-primary'
 }
 
 const handleLogout = async () => {

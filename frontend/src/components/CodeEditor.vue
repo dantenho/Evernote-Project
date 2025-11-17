@@ -1,8 +1,8 @@
 <template>
   <div class="code-editor-container">
     <!-- Instructions -->
-    <div v-if="instructions" class="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-      <div v-html="instructions" class="prose prose-sm max-w-none"></div>
+    <div v-if="instructions" class="mb-4 p-4 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-lg transition-colors">
+      <div v-html="instructions" class="prose prose-sm max-w-none dark:prose-invert"></div>
     </div>
 
     <!-- Editor -->
@@ -97,9 +97,9 @@
       </div>
 
       <!-- Expected vs Actual (if checking) -->
-      <div v-if="expectedOutput && output !== expectedOutput" class="bg-yellow-50 border-t border-yellow-200 p-3">
-        <p class="text-xs font-semibold text-yellow-800 mb-1">Expected Output:</p>
-        <pre class="text-xs text-yellow-700 whitespace-pre-wrap font-mono">{{ expectedOutput }}</pre>
+      <div v-if="expectedOutput && output !== expectedOutput" class="bg-yellow-50 dark:bg-yellow-900/30 border-t border-yellow-200 dark:border-yellow-800 p-3">
+        <p class="text-xs font-semibold text-yellow-800 dark:text-yellow-300 mb-1">Expected Output:</p>
+        <pre class="text-xs text-yellow-700 dark:text-yellow-400 whitespace-pre-wrap font-mono">{{ expectedOutput }}</pre>
       </div>
     </div>
 
@@ -107,7 +107,7 @@
     <div v-if="hints && hints.length > 0" class="mt-4">
       <button
         @click="showHints = !showHints"
-        class="text-sm text-primary-600 hover:text-primary-700 font-medium flex items-center space-x-1"
+        class="text-sm text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 font-medium flex items-center space-x-1 transition-colors"
       >
         <span>{{ showHints ? '▼' : '▶' }}</span>
         <span>💡 Need help? View hints ({{ hints.length }})</span>
@@ -116,10 +116,10 @@
         <div
           v-for="(hint, index) in hints"
           :key="index"
-          class="p-3 bg-purple-50 border border-purple-200 rounded-lg text-sm"
+          class="p-3 bg-purple-50 dark:bg-purple-900/30 border border-purple-200 dark:border-purple-800 rounded-lg text-sm transition-colors"
         >
-          <strong class="text-purple-800">Hint {{ index + 1 }}:</strong>
-          <p class="text-purple-700 mt-1">{{ hint }}</p>
+          <strong class="text-purple-800 dark:text-purple-300">Hint {{ index + 1 }}:</strong>
+          <p class="text-purple-700 dark:text-purple-400 mt-1">{{ hint }}</p>
         </div>
       </div>
     </div>

@@ -1,27 +1,27 @@
 <template>
-  <div class="min-h-screen bg-gradient-to-br from-primary-50 via-purple-50 to-pink-50">
+  <div class="min-h-screen bg-gradient-to-br from-primary-50 via-purple-50 to-pink-50 dark:from-dark dark:via-dark-card dark:to-dark transition-colors duration-300">
     <!-- Progress Bar at Top -->
-    <div class="fixed top-0 left-0 right-0 z-50 bg-white shadow-sm">
+    <div class="fixed top-0 left-0 right-0 z-50 bg-white dark:bg-dark-card shadow-sm transition-colors duration-300">
       <div class="max-w-4xl mx-auto px-4 py-3">
         <div class="flex items-center justify-between mb-2">
           <button
             @click="handleBack"
-            class="text-gray-600 hover:text-gray-900 transition-colors"
+            class="text-gray-600 dark:text-dark-secondary hover:text-gray-900 dark:hover:text-dark-primary transition-colors"
           >
             ← Back
           </button>
           <div class="flex items-center space-x-2 text-sm">
-            <span class="font-semibold text-primary-600">{{ currentStepNumber }}/{{ totalSteps }}</span>
-            <span class="text-gray-500">{{ currentStep?.title }}</span>
+            <span class="font-semibold text-primary-600 dark:text-primary-400">{{ currentStepNumber }}/{{ totalSteps }}</span>
+            <span class="text-gray-500 dark:text-dark-muted">{{ currentStep?.title }}</span>
           </div>
-          <div class="flex items-center space-x-1 text-yellow-600">
+          <div class="flex items-center space-x-1 text-yellow-600 dark:text-yellow-400">
             <span class="text-xl">⚡</span>
             <span class="font-bold">{{ currentStep?.xp_reward || 10 }} XP</span>
           </div>
         </div>
 
         <!-- Progress Bar -->
-        <div class="w-full h-3 bg-gray-200 rounded-full overflow-hidden">
+        <div class="w-full h-3 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
           <div
             class="h-full bg-gradient-to-r from-primary-500 to-purple-500 transition-all duration-500 ease-out"
             :style="{ width: `${progressPercentage}%` }"
@@ -35,35 +35,35 @@
       <div class="max-w-3xl mx-auto">
         <div v-if="loading" class="text-center py-20">
           <div class="inline-block animate-spin text-6xl mb-4">⚙️</div>
-          <p class="text-gray-600">Loading exercise...</p>
+          <p class="text-gray-600 dark:text-dark-secondary">Loading exercise...</p>
         </div>
 
-        <div v-else-if="error" class="card bg-red-50 border-red-200 animate-scale-in">
-          <p class="text-red-800">❌ {{ error }}</p>
+        <div v-else-if="error" class="card bg-red-50 dark:bg-red-900/30 border-red-200 dark:border-red-800 animate-scale-in">
+          <p class="text-red-800 dark:text-red-300">❌ {{ error }}</p>
           <button @click="loadStep" class="btn btn-primary mt-4">Try Again</button>
         </div>
 
         <!-- Lesson Content -->
         <div v-else-if="currentStep && currentStep.content_type === 'lesson'" class="space-y-6 animate-fade-in">
           <!-- Lesson Card -->
-          <div class="card bg-white shadow-xl">
-            <h1 class="text-3xl font-bold text-gray-900 mb-4">
+          <div class="card bg-white dark:bg-dark-card shadow-xl">
+            <h1 class="text-3xl font-bold text-gray-900 dark:text-dark-primary mb-4">
               {{ currentStep.title }}
             </h1>
 
             <!-- Lesson Content -->
             <div
-              class="prose prose-lg max-w-none mb-6"
+              class="prose prose-lg max-w-none mb-6 dark:prose-invert"
               v-html="currentStep.text_content"
             ></div>
 
             <!-- Code Snippet -->
             <div v-if="currentStep.code_snippet" class="mt-6">
               <div class="flex items-center justify-between mb-2">
-                <h3 class="text-lg font-semibold text-gray-900">💻 Try It Yourself</h3>
+                <h3 class="text-lg font-semibold text-gray-900 dark:text-dark-primary">💻 Try It Yourself</h3>
                 <button
                   @click="copyCode"
-                  class="text-sm text-primary-600 hover:text-primary-700 font-medium"
+                  class="text-sm text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 font-medium transition-colors"
                 >
                   📋 Copy Code
                 </button>
@@ -100,12 +100,12 @@
         <!-- Code Challenge Content -->
         <div v-else-if="currentStep && currentStep.content_type === 'code_challenge'" class="space-y-6 animate-fade-in">
           <!-- Challenge Card -->
-          <div class="card bg-white shadow-xl">
+          <div class="card bg-white dark:bg-dark-card shadow-xl">
             <div class="flex items-center justify-between mb-4">
-              <h1 class="text-2xl font-bold text-gray-900">
+              <h1 class="text-2xl font-bold text-gray-900 dark:text-dark-primary">
                 💻 {{ currentStep.title }}
               </h1>
-              <span class="px-3 py-1 bg-purple-100 text-purple-700 rounded-full text-sm font-semibold">
+              <span class="px-3 py-1 bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 rounded-full text-sm font-semibold">
                 Code Challenge
               </span>
             </div>
@@ -113,7 +113,7 @@
             <!-- Challenge Instructions -->
             <div
               v-if="currentStep.text_content"
-              class="prose prose-lg max-w-none mb-6"
+              class="prose prose-lg max-w-none mb-6 dark:prose-invert"
               v-html="currentStep.text_content"
             ></div>
 
@@ -154,14 +154,14 @@
         <!-- Quiz Content -->
         <div v-else-if="currentStep && currentStep.content_type === 'quiz'" class="space-y-6 animate-fade-in">
           <!-- Quiz Question Card -->
-          <div v-if="currentQuestion" class="card bg-white shadow-xl">
+          <div v-if="currentQuestion" class="card bg-white dark:bg-dark-card shadow-xl">
             <div class="mb-4">
-              <span class="text-sm font-semibold text-primary-600">
+              <span class="text-sm font-semibold text-primary-600 dark:text-primary-400">
                 Question {{ currentQuestionIndex + 1 }} of {{ totalQuestions }}
               </span>
             </div>
 
-            <h2 class="text-2xl font-bold text-gray-900 mb-6">
+            <h2 class="text-2xl font-bold text-gray-900 dark:text-dark-primary mb-6">
               {{ currentQuestion.text }}
             </h2>
 
@@ -175,7 +175,7 @@
                 :class="[
                   'w-full p-4 rounded-lg border-2 text-left transition-all font-medium',
                   getAlternativeClass(alternative),
-                  answerSelected ? 'cursor-not-allowed' : 'cursor-pointer hover:border-primary-300 hover:bg-primary-50'
+                  answerSelected ? 'cursor-not-allowed' : 'cursor-pointer hover:border-primary-300 dark:hover:border-primary-500 hover:bg-primary-50 dark:hover:bg-primary-900/20'
                 ]"
               >
                 <div class="flex items-center">
@@ -192,16 +192,16 @@
 
             <!-- Explanation -->
             <div v-if="answerSelected && selectedAlternative" class="mt-6 p-4 rounded-lg animate-scale-in"
-              :class="selectedAlternative.is_correct ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'">
+              :class="selectedAlternative.is_correct ? 'bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800' : 'bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800'">
               <div class="flex items-start space-x-3">
                 <span class="text-3xl flex-shrink-0">
                   {{ selectedAlternative.is_correct ? '🎉' : '💡' }}
                 </span>
                 <div>
-                  <h4 class="font-bold mb-1" :class="selectedAlternative.is_correct ? 'text-green-800' : 'text-red-800'">
+                  <h4 class="font-bold mb-1" :class="selectedAlternative.is_correct ? 'text-green-800 dark:text-green-300' : 'text-red-800 dark:text-red-300'">
                     {{ selectedAlternative.is_correct ? 'Correct!' : 'Not quite!' }}
                   </h4>
-                  <p class="text-sm" :class="selectedAlternative.is_correct ? 'text-green-700' : 'text-red-700'">
+                  <p class="text-sm" :class="selectedAlternative.is_correct ? 'text-green-700 dark:text-green-400' : 'text-red-700 dark:text-red-400'">
                     {{ selectedAlternative.explanation || (selectedAlternative.is_correct ? 'Great job!' : 'Try again!') }}
                   </p>
                 </div>
@@ -238,23 +238,23 @@
               v-for="(q, index) in currentStep.questions"
               :key="index"
               class="w-3 h-3 rounded-full transition-all"
-              :class="index === currentQuestionIndex ? 'bg-primary-600 scale-125' : (index < currentQuestionIndex ? 'bg-green-500' : 'bg-gray-300')"
+              :class="index === currentQuestionIndex ? 'bg-primary-600 dark:bg-primary-500 scale-125' : (index < currentQuestionIndex ? 'bg-green-500 dark:bg-green-400' : 'bg-gray-300 dark:bg-gray-600')"
             ></div>
           </div>
         </div>
 
         <!-- Completion Celebration -->
         <div v-if="showCelebration" class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 animate-fade-in">
-          <div class="bg-white rounded-2xl p-8 max-w-md mx-4 text-center animate-scale-in shadow-2xl">
+          <div class="bg-white dark:bg-dark-card rounded-2xl p-8 max-w-md mx-4 text-center animate-scale-in shadow-2xl">
             <div class="text-6xl mb-4 animate-bounce">🎉</div>
-            <h2 class="text-3xl font-bold text-gray-900 mb-2">Awesome!</h2>
-            <p class="text-lg text-gray-600 mb-4">You've earned {{ currentStep?.xp_reward || 10 }} XP</p>
+            <h2 class="text-3xl font-bold text-gray-900 dark:text-dark-primary mb-2">Awesome!</h2>
+            <p class="text-lg text-gray-600 dark:text-dark-secondary mb-4">You've earned {{ currentStep?.xp_reward || 10 }} XP</p>
 
-            <div class="flex items-center justify-center space-x-4 mb-6 p-4 bg-gradient-to-r from-yellow-50 to-orange-50 rounded-lg">
+            <div class="flex items-center justify-center space-x-4 mb-6 p-4 bg-gradient-to-r from-yellow-50 to-orange-50 dark:from-yellow-900/30 dark:to-orange-900/30 rounded-lg">
               <span class="text-4xl">⚡</span>
               <div class="text-left">
-                <div class="text-2xl font-bold text-orange-600">+{{ currentStep?.xp_reward || 10 }} XP</div>
-                <div class="text-sm text-gray-600">Total: {{ authStore.user?.profile?.xp_points || 0 }} XP</div>
+                <div class="text-2xl font-bold text-orange-600 dark:text-orange-400">+{{ currentStep?.xp_reward || 10 }} XP</div>
+                <div class="text-sm text-gray-600 dark:text-dark-muted">Total: {{ authStore.user?.profile?.xp_points || 0 }} XP</div>
               </div>
             </div>
 
