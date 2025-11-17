@@ -2,24 +2,24 @@
   <div class="min-h-screen bg-gray-50 py-8 px-4 sm:px-6 lg:px-8">
     <div class="max-w-7xl mx-auto">
       <!-- Header with Progress Summary -->
-      <div class="mb-8">
-        <h1 class="text-3xl font-bold text-gray-900 mb-4">My Learning Dashboard</h1>
+      <div class="mb-8 animate-fade-in">
+        <h1 class="text-3xl font-bold text-gray-900 mb-4">🎓 My Learning Dashboard</h1>
 
-        <div v-if="progressSummary" class="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div class="card bg-white">
-            <div class="text-sm text-gray-600">Total Steps</div>
+        <div v-if="progressSummary" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+          <div class="card bg-white hover:shadow-md transition-shadow animate-slide-up" style="animation-delay: 0.1s">
+            <div class="text-sm text-gray-600 mb-1">Total Steps</div>
             <div class="text-2xl font-bold text-gray-900">{{ progressSummary.total_steps }}</div>
           </div>
-          <div class="card bg-green-50">
-            <div class="text-sm text-green-600">Completed</div>
+          <div class="card bg-gradient-to-br from-green-50 to-emerald-50 hover:shadow-md transition-shadow animate-slide-up" style="animation-delay: 0.2s">
+            <div class="text-sm text-green-600 mb-1">✅ Completed</div>
             <div class="text-2xl font-bold text-green-700">{{ progressSummary.completed_steps }}</div>
           </div>
-          <div class="card bg-blue-50">
-            <div class="text-sm text-blue-600">In Progress</div>
+          <div class="card bg-gradient-to-br from-blue-50 to-cyan-50 hover:shadow-md transition-shadow animate-slide-up" style="animation-delay: 0.3s">
+            <div class="text-sm text-blue-600 mb-1">🚀 In Progress</div>
             <div class="text-2xl font-bold text-blue-700">{{ progressSummary.in_progress_steps }}</div>
           </div>
-          <div class="card bg-primary-50">
-            <div class="text-sm text-primary-600">Completion</div>
+          <div class="card bg-gradient-to-br from-primary-50 to-purple-50 hover:shadow-md transition-shadow animate-slide-up" style="animation-delay: 0.4s">
+            <div class="text-sm text-primary-600 mb-1">📊 Completion</div>
             <div class="text-2xl font-bold text-primary-700">{{ progressSummary.completion_percentage }}%</div>
           </div>
         </div>

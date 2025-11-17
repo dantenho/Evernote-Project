@@ -124,52 +124,94 @@
         </div>
 
         <!-- Account Stats -->
-        <div class="card bg-gradient-to-br from-primary-50 to-purple-50">
-          <h2 class="text-xl font-bold text-gray-900 mb-4">Your Learning Journey</h2>
+        <div class="card bg-gradient-to-br from-primary-50 via-purple-50 to-pink-50 animate-fade-in">
+          <h2 class="text-xl font-bold text-gray-900 mb-6">🎯 Your Learning Journey</h2>
 
+          <!-- Rank Display Banner -->
+          <div v-if="authStore.user?.profile" class="mb-6 p-6 bg-white rounded-xl shadow-md border-2 animate-scale-in" :style="{ borderColor: authStore.user.profile.rank_color || '#3B82F6' }">
+            <div class="flex items-center justify-between flex-wrap gap-4">
+              <!-- Rank Info -->
+              <div class="flex items-center space-x-4">
+                <div class="text-5xl animate-bounce-subtle">
+                  {{ authStore.user.profile.rank_icon || '🏆' }}
+                </div>
+                <div>
+                  <div class="text-sm text-gray-600 mb-1">Current Rank</div>
+                  <div class="text-3xl font-bold" :style="{ color: authStore.user.profile.rank_color || '#000' }">
+                    {{ authStore.user.profile.rank_name || 'Latão' }}
+                  </div>
+                  <div class="text-sm text-gray-500 mt-1">
+                    {{ authStore.user.profile.xp_points }} XP Total
+                  </div>
+                </div>
+              </div>
+
+              <!-- Streak Display -->
+              <div class="text-center px-6 py-3 bg-gradient-to-r from-orange-50 to-red-50 rounded-lg border border-orange-200">
+                <div class="flex items-center justify-center space-x-2 mb-1">
+                  <span class="text-3xl animate-flicker">🔥</span>
+                  <span class="text-3xl font-bold text-orange-600">
+                    {{ authStore.user.profile.current_streak || 0 }}
+                  </span>
+                </div>
+                <div class="text-xs text-gray-600">Day Streak</div>
+                <div v-if="authStore.user.profile.longest_streak > 0" class="text-xs text-gray-500 mt-1">
+                  Best: {{ authStore.user.profile.longest_streak }} days
+                </div>
+              </div>
+            </div>
+
+            <!-- Rank Progress Bar -->
+            <div class="mt-6">
+              <div class="flex items-center justify-between text-sm text-gray-700 mb-2">
+                <span class="font-semibold">Progress to {{ authStore.user.profile.next_rank_name || 'Max Rank' }}</span>
+                <span class="font-semibold">
+                  {{ authStore.user.profile.xp_in_current_rank || 0 }} / {{ authStore.user.profile.xp_for_next_rank || 100 }} XP
+                </span>
+              </div>
+              <div class="w-full h-4 bg-gray-200 rounded-full overflow-hidden shadow-inner">
+                <div
+                  class="h-full rounded-full transition-all duration-700 ease-out animate-pulse-subtle"
+                  :style="{
+                    width: `${authStore.user.profile.progress_to_next_rank || 0}%`,
+                    background: `linear-gradient(90deg, ${authStore.user.profile.rank_color || '#3B82F6'}, ${authStore.user.profile.rank_color || '#8B5CF6'})`
+                  }"
+                ></div>
+              </div>
+              <div class="text-xs text-gray-500 mt-1 text-right">
+                {{ Math.round(authStore.user.profile.progress_to_next_rank || 0) }}% complete
+              </div>
+            </div>
+          </div>
+
+          <!-- Quick Stats Grid -->
           <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div class="text-center">
+            <div class="text-center p-4 bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow animate-slide-up" style="animation-delay: 0.1s">
               <div class="text-2xl font-bold text-primary-700">
                 {{ authStore.user.date_joined ? daysSinceJoined : 0 }}
               </div>
               <div class="text-sm text-gray-600">Days Active</div>
             </div>
 
-            <div class="text-center">
+            <div class="text-center p-4 bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow animate-slide-up" style="animation-delay: 0.2s">
               <div class="text-2xl font-bold text-purple-700">
                 {{ authStore.user?.profile?.xp_points || 0 }}
               </div>
               <div class="text-sm text-gray-600">Total XP</div>
             </div>
 
-            <div class="text-center">
-              <div class="text-2xl font-bold text-green-700">
-                ⭐ {{ authStore.user?.profile?.level || 1 }}
+            <div class="text-center p-4 bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow animate-slide-up" style="animation-delay: 0.3s">
+              <div class="text-2xl font-bold" :style="{ color: authStore.user?.profile?.rank_color || '#16A34A' }">
+                {{ authStore.user?.profile?.rank_icon || '🏆' }} Tier {{ authStore.user?.profile?.rank_tier || 0 }}
               </div>
-              <div class="text-sm text-gray-600">Level</div>
+              <div class="text-sm text-gray-600">Rank Tier</div>
             </div>
 
-            <div class="text-center">
+            <div class="text-center p-4 bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow animate-slide-up" style="animation-delay: 0.4s">
               <div class="text-2xl font-bold text-orange-700">
-                {{ achievementsCount }}
+                🏆 {{ achievementsCount }}
               </div>
               <div class="text-sm text-gray-600">Achievements</div>
-            </div>
-          </div>
-
-          <!-- Level Progress Bar -->
-          <div v-if="authStore.user?.profile" class="mt-6">
-            <div class="flex items-center justify-between text-sm text-gray-700 mb-2">
-              <span>Progress to Level {{ (authStore.user.profile.level || 1) + 1 }}</span>
-              <span class="font-semibold">
-                {{ authStore.user.profile.xp_for_current_level }} / {{ authStore.user.profile.xp_for_next_level }} XP
-              </span>
-            </div>
-            <div class="w-full h-3 bg-white rounded-full overflow-hidden shadow-inner">
-              <div
-                class="h-full bg-gradient-to-r from-primary-500 via-purple-500 to-pink-500 rounded-full transition-all duration-500"
-                :style="{ width: `${authStore.user.profile.progress_to_next_level}%` }"
-              ></div>
             </div>
           </div>
         </div>
