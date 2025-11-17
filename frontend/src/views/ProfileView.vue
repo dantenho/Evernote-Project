@@ -11,8 +11,32 @@
       <!-- Profile Content -->
       <div v-else class="space-y-6">
         <!-- Profile Information -->
-        <div class="card bg-white">
-          <h2 class="text-xl font-bold text-gray-900 mb-6">Profile Information</h2>
+        <div class="card bg-white dark:bg-dark-card">
+          <h2 class="text-xl font-bold text-gray-900 dark:text-dark-primary mb-6">Profile Information</h2>
+
+          <!-- Avatar Section -->
+          <div class="mb-8 pb-8 border-b border-gray-200 dark:border-dark">
+            <h3 class="text-sm font-semibold text-gray-700 dark:text-dark-secondary mb-4">Profile Avatar</h3>
+            <div class="flex items-center space-x-6">
+              <UserAvatar
+                :avatar-data="currentAvatar"
+                :alt="authStore.user?.first_name || 'User'"
+                size="xl"
+                editable
+                bg-color="#e0e7ff"
+                @update:avatar="updateAvatar"
+              />
+              <div class="flex-1">
+                <p class="text-sm text-gray-600 dark:text-dark-secondary mb-2">
+                  Click on your avatar to change it. Choose from preset emojis or use a custom image URL.
+                </p>
+                <div v-if="avatarSuccess" class="text-sm text-green-600 dark:text-green-400 flex items-center space-x-1">
+                  <span>✓</span>
+                  <span>Avatar updated successfully!</span>
+                </div>
+              </div>
+            </div>
+          </div>
 
           <form @submit.prevent="handleSubmit" class="space-y-6">
             <div v-if="error" class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
@@ -227,7 +251,9 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { authAPI } from '@/services/api'
 import AchievementsList from '@/components/AchievementsList.vue'
+import UserAvatar from '@/components/UserAvatar.vue'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -238,6 +264,10 @@ const error = ref(null)
 const success = ref(null)
 const achievementsCount = ref(0)
 const achievementsListRef = ref(null)
+
+// Avatar state
+const currentAvatar = ref({ type: 'preset', value: '👨‍💻' })
+const avatarSuccess = ref(false)
 
 const form = ref({
   first_name: '',
@@ -303,6 +333,33 @@ const loadAchievementsCount = async () => {
   }
 }
 
+const updateAvatar = async (avatarData) => {
+  avatarSuccess.value = false
+  try {
+    // Update current avatar immediately for UI
+    currentAvatar.value = avatarData
+
+    // TODO: Send to backend when API endpoint is ready
+    // For now, just update local state
+    if (authStore.user?.profile) {
+      if (avatarData.type === 'url') {
+        authStore.user.profile.avatar_url = avatarData.value
+        authStore.user.profile.avatar_preset = null
+      } else {
+        authStore.user.profile.avatar_preset = avatarData.value
+        authStore.user.profile.avatar_url = null
+      }
+    }
+
+    avatarSuccess.value = true
+    setTimeout(() => {
+      avatarSuccess.value = false
+    }, 3000)
+  } catch (err) {
+    console.error('Failed to update avatar:', err)
+  }
+}
+
 onMounted(async () => {
   loading.value = true
   error.value = null
@@ -313,6 +370,16 @@ onMounted(async () => {
 
     // Load achievements count
     await loadAchievementsCount()
+
+    // Initialize avatar from profile
+    const profile = authStore.user?.profile
+    if (profile) {
+      if (profile.avatar_url) {
+        currentAvatar.value = { type: 'url', value: profile.avatar_url }
+      } else {
+        currentAvatar.value = { type: 'preset', value: profile.avatar_preset || '👨‍💻' }
+      }
+    }
 
     // Initialize form with current data
     resetForm()

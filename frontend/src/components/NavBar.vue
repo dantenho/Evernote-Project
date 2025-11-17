@@ -42,8 +42,17 @@
         </div>
 
         <div class="flex items-center space-x-4">
-          <div class="text-sm text-gray-700 dark:text-dark-secondary">
-            👋 {{ authStore.user?.first_name || 'User' }}
+          <!-- User Avatar & Name -->
+          <div class="flex items-center space-x-2">
+            <UserAvatar
+              :avatar-data="getUserAvatar()"
+              :alt="authStore.user?.first_name || 'User'"
+              size="sm"
+              bg-color="#e0e7ff"
+            />
+            <span class="text-sm text-gray-700 dark:text-dark-secondary hidden md:inline">
+              {{ authStore.user?.first_name || 'User' }}
+            </span>
           </div>
 
           <!-- Rank and XP Display - Desktop -->
@@ -145,6 +154,7 @@
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useTheme } from '@/composables/useTheme'
+import UserAvatar from '@/components/UserAvatar.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -155,6 +165,29 @@ const isActive = (path) => {
   return route.path === path
     ? 'border-primary-500 text-gray-900 dark:text-dark-primary'
     : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:text-dark-secondary dark:hover:text-dark-primary'
+}
+
+const getUserAvatar = () => {
+  // Get avatar from user profile
+  const profile = authStore.user?.profile
+  if (!profile) {
+    return { type: 'preset', value: '👨‍💻' }
+  }
+
+  // Check if avatar data is already in the expected format
+  if (profile.avatar && typeof profile.avatar === 'object') {
+    return profile.avatar
+  }
+
+  // Fallback: construct from individual fields
+  if (profile.avatar_url) {
+    return { type: 'url', value: profile.avatar_url }
+  }
+
+  return {
+    type: 'preset',
+    value: profile.avatar_preset || '👨‍💻'
+  }
 }
 
 const handleLogout = async () => {
