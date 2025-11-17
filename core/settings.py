@@ -21,7 +21,26 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'django-insecure-9q_co)*7*2vrb@+zsjh0o1o(wq%p6wwuna48!wtn^)n&_f+5n7')
+SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY')
+if not SECRET_KEY:
+    import sys
+    if 'pytest' in sys.modules or 'test' in sys.argv:
+        # Use a fixed key for testing
+        SECRET_KEY = 'test-secret-key-for-automated-testing-only'
+    elif 'runserver' in sys.argv or 'shell' in sys.argv:
+        # Development fallback - warn user
+        SECRET_KEY = 'django-insecure-9q_co)*7*2vrb@+zsjh0o1o(wq%p6wwuna48!wtn^)n&_f+5n7'
+        import warnings
+        warnings.warn(
+            "WARNING: Using insecure SECRET_KEY. Set DJANGO_SECRET_KEY environment variable for production!",
+            RuntimeWarning
+        )
+    else:
+        # Production - fail fast
+        raise ValueError(
+            "DJANGO_SECRET_KEY environment variable must be set in production. "
+            "Generate a secure key with: python -c 'from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())'"
+        )
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get('DJANGO_DEBUG', 'True') == 'True'
@@ -170,6 +189,16 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': (
         'rest_framework.permissions.IsAuthenticated',
     ),
+    'DEFAULT_THROTTLE_CLASSES': (
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle',
+    ),
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '100/hour',  # Anonymous users: 100 requests per hour
+        'user': '1000/hour',  # Authenticated users: 1000 requests per hour
+        'ai_generation': '10/hour',  # AI generation: 10 requests per hour (expensive)
+        'login': '5/minute',  # Login attempts: 5 per minute
+    },
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 20,
     'DEFAULT_RENDERER_CLASSES': (
@@ -195,24 +224,49 @@ SIMPLE_JWT = {
 # CORS settings
 # https://github.com/adamchainz/django-cors-headers
 
-# Default CORS allowed origins for development
-DEFAULT_CORS_ORIGINS = [
-    "http://localhost:5173",  # Vite default
-    "http://localhost:3000",  # Vue CLI default
-    "http://127.0.0.1:5173",
-    "http://127.0.0.1:3000",
-]
+# Default CORS allowed origins for development (only if DEBUG=True)
+if DEBUG:
+    DEFAULT_CORS_ORIGINS = [
+        "http://localhost:5173",  # Vite default
+        "http://localhost:3000",  # Vue CLI default
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:3000",
+    ]
+else:
+    DEFAULT_CORS_ORIGINS = []
 
 # Add production frontend URLs from environment variable
 CORS_ALLOWED_ORIGINS_STR = os.environ.get('CORS_ALLOWED_ORIGINS', '')
 if CORS_ALLOWED_ORIGINS_STR:
-    # Parse comma-separated production origins and combine with defaults
-    PRODUCTION_ORIGINS = [origin.strip() for origin in CORS_ALLOWED_ORIGINS_STR.split(',') if origin.strip()]
+    # Parse comma-separated production origins
+    PRODUCTION_ORIGINS = []
+    for origin in CORS_ALLOWED_ORIGINS_STR.split(','):
+        origin = origin.strip()
+        if origin:
+            # Validate origin format (must be http:// or https://)
+            if origin.startswith(('http://', 'https://')):
+                PRODUCTION_ORIGINS.append(origin)
+            else:
+                import warnings
+                warnings.warn(f"Invalid CORS origin ignored: {origin} (must start with http:// or https://)")
+
     CORS_ALLOWED_ORIGINS = DEFAULT_CORS_ORIGINS + PRODUCTION_ORIGINS
 else:
+    # In production without CORS_ALLOWED_ORIGINS set, only allow same-origin
+    if not DEBUG:
+        import warnings
+        warnings.warn(
+            "WARNING: No CORS_ALLOWED_ORIGINS set in production. "
+            "Frontend must be served from same domain or set CORS_ALLOWED_ORIGINS.",
+            RuntimeWarning
+        )
     CORS_ALLOWED_ORIGINS = DEFAULT_CORS_ORIGINS
 
 CORS_ALLOW_CREDENTIALS = True
+
+# Additional CORS security settings
+CORS_ALLOW_ALL_ORIGINS = False  # Never allow all origins
+CORS_ALLOWED_ORIGIN_REGEXES = []  # Don't use regex origins unless specifically needed
 
 # ============================================================================
 # Production Security Settings

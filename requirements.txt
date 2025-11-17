@@ -27,3 +27,9 @@ Faker==33.1.0
 
 # Code Quality
 coverage==7.6.9
+
+# Security
+bleach==6.1.0  # HTML sanitization for XSS prevention
+
+# HTTP Client
+requests==2.31.0  # For webhooks and external API calls

@@ -784,14 +784,22 @@ def user_profile_gamification(request):
         )
 
 
+from rest_framework.decorators import throttle_classes
+from .throttling import AIGenerationThrottle
+from .security_utils import validate_ai_prompt, sanitize_text
+
+
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
+@throttle_classes([AIGenerationThrottle])
 def generate_code_hint(request):
     """
     Generate AI-powered hints for code challenges.
 
     This endpoint analyzes the user's code attempt and provides contextual hints
     to help them solve the challenge without directly giving away the solution.
+
+    **Rate Limited**: 10 requests per hour per user (staff: 1000/hour)
 
     Args:
         request: HTTP request with:
@@ -816,6 +824,18 @@ def generate_code_hint(request):
         user_code = request.data.get('user_code', '')
         attempt_number = request.data.get('attempt_number', 1)
         error_message = request.data.get('error_message', '')
+
+        # Validate and sanitize user_code input
+        is_valid, error = validate_ai_prompt(user_code, max_length=10000)
+        if not is_valid:
+            return Response(
+                {'detail': f'Invalid code input: {error}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Sanitize error message
+        if error_message:
+            error_message = sanitize_text(error_message)[:1000]  # Limit length
 
         # Validate required fields
         if not step_id:

@@ -73,13 +73,31 @@ const router = createRouter({
 router.beforeEach((to, from, next) => {
   const authStore = useAuthStore()
 
+  // Check authentication
   if (to.meta.requiresAuth && !authStore.isAuthenticated) {
     next({ name: 'Login', query: { redirect: to.fullPath } })
-  } else if ((to.name === 'Login' || to.name === 'Register') && authStore.isAuthenticated) {
-    next({ name: 'Dashboard' })
-  } else {
-    next()
+    return
   }
+
+  // Check admin authorization
+  if (to.meta.requiresAdmin) {
+    const user = authStore.user
+    const isAdmin = user?.is_staff === true || user?.is_superuser === true
+
+    if (!isAdmin) {
+      console.warn('Unauthorized access attempt to admin route')
+      next({ name: 'Dashboard' })
+      return
+    }
+  }
+
+  // Redirect authenticated users away from login/register
+  if ((to.name === 'Login' || to.name === 'Register') && authStore.isAuthenticated) {
+    next({ name: 'Dashboard' })
+    return
+  }
+
+  next()
 })
 
 export default router

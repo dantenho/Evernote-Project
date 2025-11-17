@@ -99,11 +99,24 @@ class UserProfileSerializer(serializers.ModelSerializer):
         next_rank = obj.rank_data.get('next')
         return next_rank['name'] if next_rank else None
 
+    # Avatar field
+    avatar = serializers.SerializerMethodField(
+        help_text="User's avatar (URL or preset emoji)"
+    )
+
+    def get_avatar(self, obj):
+        """Get user's avatar data."""
+        return obj.avatar
+
     class Meta:
         model = UserProfile
         fields = (
             'id',
             'xp_points',
+            # Avatar fields
+            'avatar',
+            'avatar_url',
+            'avatar_preset',
             # Rank fields
             'rank_name',
             'rank_tier',
@@ -129,6 +142,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
         read_only_fields = (
             'id',
             'xp_points',
+            'avatar',  # Computed field
             'current_streak',
             'longest_streak',
             'last_activity_date',
