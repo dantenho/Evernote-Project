@@ -43,6 +43,12 @@ const routes = [
     name: 'Profile',
     component: () => import('@/views/ProfileView.vue'),
     meta: { requiresAuth: true }
+  },
+  {
+    path: '/ai-generator',
+    name: 'AIGenerator',
+    component: () => import('@/views/AIGeneratorView.vue'),
+    meta: { requiresAuth: true }
   }
 ]
 

@@ -10,6 +10,9 @@ from .models import (
     UserProfile,
     Achievement,
     UserAchievement,
+    AIProvider,
+    ContentTemplate,
+    GeneratedContent,
 )
 
 class TopicoInline(admin.TabularInline):
@@ -152,3 +155,83 @@ class UserAchievementAdmin(admin.ModelAdmin):
     readonly_fields = ('earned_at',)
     date_hierarchy = 'earned_at'
     ordering = ('-earned_at',)
+
+
+# ============================================================================
+# AI Content Generation Admin
+# ============================================================================
+
+@admin.register(AIProvider)
+class AIProviderAdmin(admin.ModelAdmin):
+    """Admin interface for AI providers."""
+
+    list_display = ('name', 'provider_type', 'model_name', 'is_active', 'max_tokens', 'temperature')
+    list_filter = ('provider_type', 'is_active')
+    search_fields = ('name', 'model_name')
+    ordering = ('name',)
+
+    fieldsets = (
+        ('Basic Information', {
+            'fields': ('name', 'provider_type', 'is_active')
+        }),
+        ('API Configuration', {
+            'fields': ('api_key', 'api_endpoint', 'model_name')
+        }),
+        ('Generation Parameters', {
+            'fields': ('max_tokens', 'temperature'),
+            'description': 'Configure default parameters for content generation'
+        }),
+    )
+
+
+@admin.register(ContentTemplate)
+class ContentTemplateAdmin(admin.ModelAdmin):
+    """Admin interface for content templates."""
+
+    list_display = ('name', 'content_type', 'is_active')
+    list_filter = ('content_type', 'is_active')
+    search_fields = ('name',)
+    ordering = ('content_type', 'name')
+
+    fieldsets = (
+        ('Basic Information', {
+            'fields': ('name', 'content_type', 'is_active')
+        }),
+        ('Prompts', {
+            'fields': ('system_prompt', 'user_prompt_template'),
+            'description': 'Use {{variable}} syntax for template variables (e.g., {{topic}}, {{difficulty}})'
+        }),
+    )
+
+
+@admin.register(GeneratedContent)
+class GeneratedContentAdmin(admin.ModelAdmin):
+    """Admin interface for generated content records."""
+
+    list_display = ('id', 'provider', 'template', 'user', 'was_successful', 'tokens_used', 'generation_time', 'created_at')
+    list_filter = ('was_successful', 'provider__provider_type', 'template__content_type', 'created_at')
+    search_fields = ('user__username', 'prompt', 'generated_text', 'error_message')
+    readonly_fields = ('provider', 'template', 'user', 'prompt', 'generated_text', 'parsed_content',
+                       'tokens_used', 'generation_time', 'was_successful', 'error_message', 'created_at')
+    date_hierarchy = 'created_at'
+    ordering = ('-created_at',)
+
+    fieldsets = (
+        ('Generation Details', {
+            'fields': ('provider', 'template', 'user', 'was_successful')
+        }),
+        ('Prompts and Content', {
+            'fields': ('prompt', 'generated_text', 'parsed_content'),
+            'classes': ('collapse',)
+        }),
+        ('Metrics', {
+            'fields': ('tokens_used', 'generation_time')
+        }),
+        ('Error Information', {
+            'fields': ('error_message',),
+            'classes': ('collapse',)
+        }),
+        ('Timestamps', {
+            'fields': ('created_at',)
+        }),
+    )

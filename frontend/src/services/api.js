@@ -477,6 +477,83 @@ export const gamificationAPI = {
   },
 }
 
+/**
+ * AI Content Generation API endpoints
+ */
+export const aiAPI = {
+  /**
+   * Get list of available AI providers
+   *
+   * @returns {Promise} Axios promise with active AI providers array
+   */
+  getProviders() {
+    return apiClient.get('/ai/providers/')
+  },
+
+  /**
+   * Get list of content templates
+   *
+   * @param {string} [contentType] - Filter by content type (optional)
+   * @returns {Promise} Axios promise with templates array
+   */
+  getTemplates(contentType = null) {
+    const params = contentType ? { content_type: contentType } : {}
+    return apiClient.get('/ai/templates/', { params })
+  },
+
+  /**
+   * Generate a lesson step using AI
+   *
+   * @param {object} data - Generation parameters
+   * @param {number} data.provider_id - AI provider ID
+   * @param {number} [data.template_id] - Content template ID (optional, uses default)
+   * @param {string} data.topic - Topic for the lesson
+   * @param {string} [data.difficulty] - Difficulty level (beginner/intermediate/advanced)
+   * @param {string} [data.language] - Language (default: Portuguese)
+   * @param {string} [data.additional_context] - Additional context (optional)
+   * @returns {Promise} Axios promise with generated content
+   */
+  generateLesson(data) {
+    return apiClient.post('/ai/generate/lesson/', data)
+  },
+
+  /**
+   * Generate quiz questions using AI
+   *
+   * @param {object} data - Generation parameters
+   * @param {number} data.provider_id - AI provider ID
+   * @param {number} [data.template_id] - Content template ID (optional)
+   * @param {string} data.topic - Topic for the quiz
+   * @param {number} [data.num_questions] - Number of questions (default: 5)
+   * @param {string} [data.difficulty] - Difficulty level
+   * @param {string} [data.language] - Language (default: Portuguese)
+   * @returns {Promise} Axios promise with generated quiz questions
+   */
+  generateQuiz(data) {
+    return apiClient.post('/ai/generate/quiz/', data)
+  },
+
+  /**
+   * Get content generation history for current user
+   *
+   * @param {number} [limit] - Number of records to return (default: 20)
+   * @returns {Promise} Axios promise with generation history array
+   */
+  getHistory(limit = 20) {
+    return apiClient.get('/ai/history/', { params: { limit } })
+  },
+
+  /**
+   * Get detailed information about a specific generation
+   *
+   * @param {number} generationId - Generation record ID
+   * @returns {Promise} Axios promise with full generation details
+   */
+  getGenerationDetail(generationId) {
+    return apiClient.get(`/ai/history/${generationId}/`)
+  },
+}
+
 // ============================================================================
 // Export Default
 // ============================================================================
