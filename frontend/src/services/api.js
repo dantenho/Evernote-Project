@@ -552,6 +552,20 @@ export const aiAPI = {
   getGenerationDetail(generationId) {
     return apiClient.get(`/ai/history/${generationId}/`)
   },
+
+  /**
+   * Generate AI-powered hint for code challenge
+   *
+   * @param {object} data - Hint generation parameters
+   * @param {number} data.step_id - Code challenge step ID
+   * @param {string} data.user_code - User's current code attempt
+   * @param {number} data.attempt_number - Current attempt number
+   * @param {string} [data.error_message] - Error message if code failed (optional)
+   * @returns {Promise} Axios promise with generated hint
+   */
+  generateHint(data) {
+    return apiClient.post('/ai/generate/hint/', data)
+  },
 }
 
 // ============================================================================

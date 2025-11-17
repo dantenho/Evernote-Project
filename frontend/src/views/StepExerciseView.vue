@@ -124,6 +124,8 @@
               :solution="currentStep.solution"
               :show-solution="codeAttempts >= 3"
               :hints="getCodeHints()"
+              :step-id="currentStep.id"
+              :attempt-count="codeAttempts"
               @correct="handleCodeCorrect"
               @run="handleCodeRun"
               @error="handleCodeError"

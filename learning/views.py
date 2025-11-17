@@ -782,3 +782,166 @@ def user_profile_gamification(request):
             {'detail': 'Failed to fetch profile data.'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def generate_code_hint(request):
+    """
+    Generate AI-powered hints for code challenges.
+
+    This endpoint analyzes the user's code attempt and provides contextual hints
+    to help them solve the challenge without directly giving away the solution.
+
+    Args:
+        request: HTTP request with:
+            - step_id: ID of the code challenge step
+            - user_code: User's current code attempt
+            - attempt_number: Which attempt this is (1, 2, 3, etc.)
+            - error_message: Optional error message if code failed
+
+    Returns:
+        Response: AI-generated hint text
+
+    Response format:
+        {
+            "hint": str,
+            "hint_type": str ("syntax" | "logic" | "approach" | "solution"),
+            "confidence": float (0.0 - 1.0)
+        }
+    """
+    try:
+        # Get request data
+        step_id = request.data.get('step_id')
+        user_code = request.data.get('user_code', '')
+        attempt_number = request.data.get('attempt_number', 1)
+        error_message = request.data.get('error_message', '')
+
+        # Validate required fields
+        if not step_id:
+            return Response(
+                {'detail': 'step_id is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Get the step (code challenge)
+        try:
+            step = Passo.objects.get(id=step_id, content_type='code_challenge')
+        except Passo.DoesNotExist:
+            return Response(
+                {'detail': 'Code challenge not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # Import AI service
+        from .ai_services import get_ai_service, AIServiceError
+
+        # Try to get AI service (use any available provider)
+        try:
+            ai_service = get_ai_service()
+        except AIServiceError as e:
+            # If no AI service available, return fallback hints
+            logger.warning(f"No AI service available: {str(e)}")
+            return Response({
+                'hint': _get_fallback_hint(attempt_number, step, user_code, error_message),
+                'hint_type': 'fallback',
+                'confidence': 0.5
+            })
+
+        # Construct AI prompt for hint generation
+        system_prompt = """You are a helpful programming tutor. Your goal is to provide hints that guide the student towards the solution without giving away the answer directly.
+
+Guidelines:
+- For attempt 1-2: Give gentle nudges about syntax or approach
+- For attempt 3-4: Be more specific about what's wrong
+- For attempt 5+: Provide clearer direction but still let them think
+- Never write the complete solution
+- Be encouraging and positive
+- Focus on one issue at a time"""
+
+        user_prompt = f"""Exercise: {step.title}
+
+Description: {step.text_content[:500]}
+
+Expected Output:
+{step.expected_output}
+
+Student's Code (Attempt #{attempt_number}):
+```python
+{user_code}
+```
+
+{f"Error Message: {error_message}" if error_message else ""}
+
+Provide a helpful hint for this attempt. Keep it concise (2-3 sentences)."""
+
+        # Generate hint using AI
+        hint_text = ai_service.generate_content(system_prompt, user_prompt)
+
+        # Determine hint type based on content
+        hint_type = 'approach'
+        if 'syntax' in hint_text.lower() or 'error' in hint_text.lower():
+            hint_type = 'syntax'
+        elif attempt_number >= 5:
+            hint_type = 'detailed'
+        elif 'think about' in hint_text.lower() or 'consider' in hint_text.lower():
+            hint_type = 'logic'
+
+        return Response({
+            'hint': hint_text,
+            'hint_type': hint_type,
+            'confidence': 0.8
+        })
+
+    except Exception as e:
+        logger.error(f"Error generating code hint: {str(e)}")
+        # Return fallback hint on error
+        return Response({
+            'hint': _get_fallback_hint(
+                request.data.get('attempt_number', 1),
+                None,
+                request.data.get('user_code', ''),
+                request.data.get('error_message', '')
+            ),
+            'hint_type': 'fallback',
+            'confidence': 0.3
+        })
+
+
+def _get_fallback_hint(attempt_number, step, user_code, error_message):
+    """
+    Generate fallback hints when AI service is unavailable.
+
+    Args:
+        attempt_number: Which attempt this is
+        step: The Passo object (can be None)
+        user_code: User's code attempt
+        error_message: Error message if any
+
+    Returns:
+        str: Fallback hint text
+    """
+    # Basic hints based on attempt number
+    if attempt_number == 1:
+        return "Read the problem description carefully. What is the expected output? Think about what Python functions or operations you need to use."
+
+    elif attempt_number == 2:
+        if error_message:
+            if 'SyntaxError' in error_message:
+                return "There's a syntax error in your code. Check for missing colons, parentheses, or quotes."
+            elif 'NameError' in error_message:
+                return "You're using a variable or function that hasn't been defined. Check your variable names."
+            elif 'TypeError' in error_message:
+                return "You're using the wrong type of data. Check if you need to convert between strings and numbers."
+        return "Your code has an error. Check your syntax carefully - are all parentheses and quotes matched?"
+
+    elif attempt_number == 3:
+        return "Compare your output to the expected output. What's different? Focus on exact spacing, capitalization, and punctuation."
+
+    elif attempt_number == 4:
+        if step and step.solution:
+            return "You're getting close! Look at the structure of your code. Are you using the right function? Check the example in the instructions."
+        return "Think about the problem step by step. What does the program need to do first? What comes next?"
+
+    else:  # attempt_number >= 5
+        return "You've tried several times. Consider clicking the 'Solution' button to see the correct answer, then try to understand why it works."

@@ -104,22 +104,60 @@
     </div>
 
     <!-- Hints -->
-    <div v-if="hints && hints.length > 0" class="mt-4">
-      <button
-        @click="showHints = !showHints"
-        class="text-sm text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 font-medium flex items-center space-x-1 transition-colors"
-      >
-        <span>{{ showHints ? '▼' : '▶' }}</span>
-        <span>💡 Need help? View hints ({{ hints.length }})</span>
-      </button>
-      <div v-if="showHints" class="mt-2 space-y-2">
-        <div
-          v-for="(hint, index) in hints"
-          :key="index"
-          class="p-3 bg-purple-50 dark:bg-purple-900/30 border border-purple-200 dark:border-purple-800 rounded-lg text-sm transition-colors"
+    <div v-if="(hints && hints.length > 0) || aiHint" class="mt-4 space-y-3">
+      <!-- Static Hints -->
+      <div v-if="hints && hints.length > 0">
+        <button
+          @click="showHints = !showHints"
+          class="text-sm text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 font-medium flex items-center space-x-1 transition-colors"
         >
-          <strong class="text-purple-800 dark:text-purple-300">Hint {{ index + 1 }}:</strong>
-          <p class="text-purple-700 dark:text-purple-400 mt-1">{{ hint }}</p>
+          <span>{{ showHints ? '▼' : '▶' }}</span>
+          <span>💡 Need help? View hints ({{ hints.length }})</span>
+        </button>
+        <div v-if="showHints" class="mt-2 space-y-2">
+          <div
+            v-for="(hint, index) in hints"
+            :key="index"
+            class="p-3 bg-purple-50 dark:bg-purple-900/30 border border-purple-200 dark:border-purple-800 rounded-lg text-sm transition-colors"
+          >
+            <strong class="text-purple-800 dark:text-purple-300">Hint {{ index + 1 }}:</strong>
+            <p class="text-purple-700 dark:text-purple-400 mt-1">{{ hint }}</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- AI Hint Generation -->
+      <div>
+        <button
+          @click="requestAIHint"
+          :disabled="loadingAIHint || !stepId"
+          class="text-sm font-medium flex items-center space-x-2 px-4 py-2 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          :class="aiHint ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 hover:bg-green-200 dark:hover:bg-green-900/40' : 'bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 hover:bg-primary-200 dark:hover:bg-primary-900/40'"
+        >
+          <span v-if="loadingAIHint" class="animate-spin">⚙️</span>
+          <span v-else>🤖</span>
+          <span>{{ loadingAIHint ? 'Generating AI Hint...' : (aiHint ? 'Get Another AI Hint' : 'Get AI Hint') }}</span>
+        </button>
+
+        <!-- AI Hint Display -->
+        <div v-if="aiHint" class="mt-2 p-4 bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border-2 border-blue-200 dark:border-blue-800 rounded-lg animate-scale-in">
+          <div class="flex items-start space-x-3">
+            <span class="text-2xl flex-shrink-0">🤖</span>
+            <div class="flex-1">
+              <div class="flex items-center justify-between mb-2">
+                <strong class="text-blue-800 dark:text-blue-300 text-sm font-semibold">AI Tutor:</strong>
+                <span v-if="aiHintType" class="text-xs px-2 py-1 rounded-full bg-blue-200 dark:bg-blue-800 text-blue-700 dark:text-blue-200">
+                  {{ aiHintType }}
+                </span>
+              </div>
+              <p class="text-blue-700 dark:text-blue-300 text-sm leading-relaxed">{{ aiHint }}</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- AI Hint Error -->
+        <div v-if="aiHintError" class="mt-2 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-sm text-red-700 dark:text-red-300">
+          {{ aiHintError }}
         </div>
       </div>
     </div>
@@ -128,6 +166,7 @@
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
+import { aiAPI } from '@/services/api'
 
 // ============================================================================
 // Props
@@ -157,6 +196,14 @@ const props = defineProps({
   showSolution: {
     type: Boolean,
     default: false
+  },
+  stepId: {
+    type: Number,
+    default: null
+  },
+  attemptCount: {
+    type: Number,
+    default: 0
   }
 })
 
@@ -179,6 +226,12 @@ const pyodide = ref(null)
 const executionTime = ref(null)
 const isCorrect = ref(null)
 const showHints = ref(false)
+
+// AI Hint state
+const aiHint = ref('')
+const aiHintType = ref('')
+const aiHintError = ref('')
+const loadingAIHint = ref(false)
 
 // ============================================================================
 // Computed
@@ -353,6 +406,35 @@ const handleTab = (event) => {
 
   // Move cursor after spaces
   textarea.selectionStart = textarea.selectionEnd = start + 4
+}
+
+/**
+ * Request AI-generated hint
+ */
+const requestAIHint = async () => {
+  if (!props.stepId || loadingAIHint.value) return
+
+  loadingAIHint.value = true
+  aiHintError.value = ''
+
+  try {
+    const response = await aiAPI.generateHint({
+      step_id: props.stepId,
+      user_code: userCode.value,
+      attempt_number: props.attemptCount || 1,
+      error_message: errorOutput.value || ''
+    })
+
+    aiHint.value = response.data.hint
+    aiHintType.value = response.data.hint_type || 'general'
+
+  } catch (err) {
+    console.error('Failed to generate AI hint:', err)
+    aiHintError.value = 'Failed to generate hint. Please try again.'
+
+  } finally {
+    loadingAIHint.value = false
+  }
 }
 
 // ============================================================================
