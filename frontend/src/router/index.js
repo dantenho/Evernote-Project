@@ -33,6 +33,12 @@ const routes = [
     meta: { requiresAuth: true }
   },
   {
+    path: '/exercise/:trackId/:stepId',
+    name: 'StepExercise',
+    component: () => import('@/views/StepExerciseView.vue'),
+    meta: { requiresAuth: true }
+  },
+  {
     path: '/progress',
     name: 'Progress',
     component: () => import('@/views/ProgressView.vue'),

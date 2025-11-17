@@ -52,38 +52,68 @@
                 <div
                   v-for="track in topic.tracks"
                   :key="track.id"
-                  class="bg-gray-50 rounded-lg p-4 hover:bg-gray-100 transition-colors"
+                  class="bg-gradient-to-br from-white to-gray-50 rounded-lg p-5 border border-gray-200 hover:border-primary-300 transition-all shadow-sm hover:shadow-md"
                 >
-                  <div class="flex items-center justify-between mb-3">
-                    <h4 class="text-lg font-medium text-gray-900">{{ track.title }}</h4>
+                  <div class="flex items-start justify-between mb-3">
+                    <div class="flex-1">
+                      <h4 class="text-lg font-semibold text-gray-900 mb-1">{{ track.icon || '📚' }} {{ track.title }}</h4>
+                      <p v-if="track.description" class="text-gray-600 text-sm mb-3">{{ track.description }}</p>
+                      <div class="flex items-center space-x-3 text-sm text-gray-600">
+                        <span>{{ track.steps?.length || 0 }} exercises</span>
+                        <span v-if="track.difficulty" class="px-2 py-0.5 rounded-full bg-gray-200 text-xs font-medium">
+                          {{ track.difficulty }}
+                        </span>
+                      </div>
+                    </div>
                     <span
-                      class="px-3 py-1 rounded-full text-xs font-medium"
+                      class="px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap ml-3"
                       :class="getTrackProgressClass(track)"
                     >
                       {{ getTrackProgress(track) }}
                     </span>
                   </div>
 
-                  <p v-if="track.description" class="text-gray-600 text-sm mb-3">{{ track.description }}</p>
-
-                  <!-- Steps -->
-                  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                    <button
-                      v-for="step in track.steps"
-                      :key="step.id"
-                      @click="navigateToStep(step)"
-                      class="flex items-center justify-between p-3 rounded-md border transition-all hover:shadow-md"
-                      :class="getStepClass(step)"
-                    >
-                      <div class="flex items-center space-x-2 min-w-0">
-                        <span class="text-xl flex-shrink-0">{{ getStepIcon(step) }}</span>
-                        <span class="text-sm font-medium truncate">{{ step.title }}</span>
-                      </div>
-                      <span v-if="isStepCompleted(step.id)" class="text-green-600 flex-shrink-0">
-                        ✓
-                      </span>
-                    </button>
+                  <!-- Progress Bar -->
+                  <div v-if="track.steps && track.steps.length > 0" class="w-full h-2 bg-gray-200 rounded-full overflow-hidden mb-4">
+                    <div
+                      class="h-full bg-gradient-to-r from-primary-500 to-purple-500 transition-all duration-500"
+                      :style="{ width: `${getTrackProgressPercentage(track)}%` }"
+                    ></div>
                   </div>
+
+                  <!-- Start/Continue Button -->
+                  <button
+                    v-if="track.steps && track.steps.length > 0"
+                    @click="startTrack(track)"
+                    class="btn btn-primary w-full mb-4 flex items-center justify-center space-x-2 py-3 shadow-md hover:shadow-lg transform hover:scale-105 transition-all"
+                  >
+                    <span>{{ getTrackProgressPercentage(track) === 0 ? '🚀 Start Track' : '▶️ Continue Learning' }}</span>
+                  </button>
+
+                  <!-- Steps (collapsible) -->
+                  <details class="group">
+                    <summary class="cursor-pointer text-sm font-medium text-primary-600 hover:text-primary-700 flex items-center space-x-1">
+                      <span class="transform transition-transform group-open:rotate-90">▶</span>
+                      <span>View {{ track.steps?.length || 0 }} Exercises</span>
+                    </summary>
+                    <div class="mt-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                      <button
+                        v-for="step in track.steps"
+                        :key="step.id"
+                        @click="navigateToStep(track, step)"
+                        class="flex items-center justify-between p-3 rounded-md border transition-all hover:shadow-md text-left"
+                        :class="getStepClass(step)"
+                      >
+                        <div class="flex items-center space-x-2 min-w-0">
+                          <span class="text-xl flex-shrink-0">{{ getStepIcon(step) }}</span>
+                          <span class="text-sm font-medium truncate">{{ step.title }}</span>
+                        </div>
+                        <span v-if="isStepCompleted(step.id)" class="text-green-600 flex-shrink-0 text-lg">
+                          ✓
+                        </span>
+                      </button>
+                    </div>
+                  </details>
                 </div>
               </div>
             </div>
@@ -177,7 +207,38 @@ const getTrackProgressClass = (track) => {
   return 'bg-gray-200 text-gray-700'
 }
 
-const navigateToStep = (step) => {
-  router.push({ name: 'Learn', params: { stepId: step.id } })
+const getTrackProgressPercentage = (track) => {
+  if (!track.steps || track.steps.length === 0) {
+    return 0
+  }
+
+  const completed = track.steps.filter(step => isStepCompleted(step.id)).length
+  return Math.round((completed / track.steps.length) * 100)
+}
+
+const startTrack = (track) => {
+  // Find first incomplete step, or start from beginning
+  const firstIncompleteStep = track.steps.find(step => !isStepCompleted(step.id))
+  const stepToStart = firstIncompleteStep || track.steps[0]
+
+  if (stepToStart) {
+    router.push({
+      name: 'StepExercise',
+      params: {
+        trackId: track.id,
+        stepId: stepToStart.id
+      }
+    })
+  }
+}
+
+const navigateToStep = (track, step) => {
+  router.push({
+    name: 'StepExercise',
+    params: {
+      trackId: track.id,
+      stepId: step.id
+    }
+  })
 }
 </script>
