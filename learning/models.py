@@ -591,3 +591,270 @@ class UserProgress(models.Model):
             'in_progress_steps': total - completed,
             'percentage': percentage
         }
+
+
+# ============================================================================
+# Gamification Models
+# ============================================================================
+
+class UserProfile(models.Model):
+    """
+    Extended user profile for gamification features.
+
+    Stores XP points, calculates user level, and tracks achievements.
+    One-to-one relationship with Django's User model.
+    """
+
+    user = models.OneToOneField(
+        User,
+        on_delete=models.CASCADE,
+        related_name='profile',
+        verbose_name="Usuário",
+        help_text="The user this profile belongs to"
+    )
+    xp_points = models.PositiveIntegerField(
+        default=0,
+        db_index=True,  # Index for leaderboard queries
+        verbose_name="Pontos de Experiência",
+        help_text="Total experience points earned"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Perfil do Usuário"
+        verbose_name_plural = "Perfis dos Usuários"
+        ordering = ['-xp_points']  # Order by XP for leaderboards
+        indexes = [
+            models.Index(fields=['-xp_points']),  # For leaderboard queries
+        ]
+
+    def __str__(self):
+        return f"{self.user.username} - Level {self.level} ({self.xp_points} XP)"
+
+    @property
+    def level(self):
+        """
+        Calculate user level based on XP points.
+
+        Formula: level = floor(xp_points / 100)
+        Each level requires 100 XP.
+
+        Returns:
+            int: Current user level (minimum 1)
+        """
+        return max(1, self.xp_points // 100)
+
+    @property
+    def xp_for_current_level(self):
+        """
+        Calculate XP earned in current level.
+
+        Returns:
+            int: XP points within current level (0-99)
+        """
+        return self.xp_points % 100
+
+    @property
+    def xp_for_next_level(self):
+        """
+        Calculate XP needed to reach next level.
+
+        Returns:
+            int: XP points needed for next level
+        """
+        return 100 - self.xp_for_current_level
+
+    @property
+    def progress_to_next_level(self):
+        """
+        Calculate progress percentage to next level.
+
+        Returns:
+            float: Progress percentage (0-100)
+        """
+        return round(self.xp_for_current_level, 2)
+
+    def add_xp(self, amount):
+        """
+        Add experience points to user profile.
+
+        Args:
+            amount: Number of XP points to add
+
+        Returns:
+            dict: Information about level changes
+                - old_level: Level before adding XP
+                - new_level: Level after adding XP
+                - leveled_up: Whether user leveled up
+                - new_xp: Total XP after addition
+        """
+        old_level = self.level
+        self.xp_points += amount
+        self.save(update_fields=['xp_points', 'updated_at'])
+        new_level = self.level
+
+        return {
+            'old_level': old_level,
+            'new_level': new_level,
+            'leveled_up': new_level > old_level,
+            'new_xp': self.xp_points,
+            'xp_gained': amount
+        }
+
+
+class Achievement(models.Model):
+    """
+    Define available achievements/badges that users can earn.
+
+    Achievements are awarded based on specific conditions like
+    completing tracks, reaching levels, or earning XP milestones.
+    """
+
+    # Achievement types
+    FIRST_STEP = 'first_step'
+    TRACK_COMPLETE = 'track_complete'
+    AREA_COMPLETE = 'area_complete'
+    LEVEL_MILESTONE = 'level_milestone'
+    XP_MILESTONE = 'xp_milestone'
+    STREAK_MILESTONE = 'streak_milestone'
+
+    ACHIEVEMENT_TYPES = (
+        (FIRST_STEP, 'First Step Completed'),
+        (TRACK_COMPLETE, 'Track Completed'),
+        (AREA_COMPLETE, 'Area Completed'),
+        (LEVEL_MILESTONE, 'Level Milestone'),
+        (XP_MILESTONE, 'XP Milestone'),
+        (STREAK_MILESTONE, 'Streak Milestone'),
+    )
+
+    name = models.CharField(
+        max_length=100,
+        unique=True,
+        db_index=True,
+        verbose_name="Nome",
+        help_text="Achievement name"
+    )
+    description = models.TextField(
+        verbose_name="Descrição",
+        help_text="Description of how to earn this achievement"
+    )
+    achievement_type = models.CharField(
+        max_length=20,
+        choices=ACHIEVEMENT_TYPES,
+        db_index=True,
+        verbose_name="Tipo",
+        help_text="Type of achievement"
+    )
+    icon = models.CharField(
+        max_length=50,
+        default='🏆',
+        verbose_name="Ícone",
+        help_text="Emoji or icon identifier for this achievement"
+    )
+    xp_reward = models.PositiveIntegerField(
+        default=0,
+        verbose_name="Recompensa XP",
+        help_text="Bonus XP awarded when earning this achievement"
+    )
+    # For track/area completion achievements
+    related_track = models.ForeignKey(
+        Trilha,
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        verbose_name="Trilha Relacionada",
+        help_text="Track this achievement is for (if applicable)"
+    )
+    related_area = models.ForeignKey(
+        Area,
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        verbose_name="Área Relacionada",
+        help_text="Area this achievement is for (if applicable)"
+    )
+    # For milestone achievements
+    required_value = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        verbose_name="Valor Necessário",
+        help_text="Required level/XP for milestone achievements"
+    )
+    order = models.PositiveSmallIntegerField(
+        default=0,
+        verbose_name="Ordem",
+        help_text="Display order for achievements list"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Conquista"
+        verbose_name_plural = "Conquistas"
+        ordering = ['order', 'name']
+        indexes = [
+            models.Index(fields=['achievement_type']),
+            models.Index(fields=['order']),
+        ]
+
+    def __str__(self):
+        return f"{self.icon} {self.name}"
+
+    def clean(self):
+        """
+        Validate achievement data.
+
+        Ensures milestone achievements have required_value set.
+        """
+        super().clean()
+
+        if self.achievement_type in [self.LEVEL_MILESTONE, self.XP_MILESTONE]:
+            if not self.required_value:
+                raise ValidationError(
+                    f"{self.get_achievement_type_display()} achievements must have a required_value."
+                )
+
+
+class UserAchievement(models.Model):
+    """
+    Through model linking users to their earned achievements.
+
+    Tracks when achievements were earned and if bonus XP was awarded.
+    """
+
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='achievements',
+        verbose_name="Usuário"
+    )
+    achievement = models.ForeignKey(
+        Achievement,
+        on_delete=models.CASCADE,
+        related_name='earned_by',
+        verbose_name="Conquista"
+    )
+    earned_at = models.DateTimeField(
+        auto_now_add=True,
+        db_index=True,
+        verbose_name="Conquistado em",
+        help_text="When this achievement was earned"
+    )
+    xp_awarded = models.PositiveIntegerField(
+        default=0,
+        verbose_name="XP Concedido",
+        help_text="Bonus XP awarded for this achievement"
+    )
+
+    class Meta:
+        verbose_name = "Conquista do Usuário"
+        verbose_name_plural = "Conquistas dos Usuários"
+        unique_together = [['user', 'achievement']]  # Each achievement earned once per user
+        ordering = ['-earned_at']
+        indexes = [
+            models.Index(fields=['user', '-earned_at']),
+            models.Index(fields=['achievement']),
+        ]
+
+    def __str__(self):
+        return f"{self.user.username} - {self.achievement.name}"

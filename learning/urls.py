@@ -13,6 +13,9 @@ from .views import (
     UserProgressViewSet,
     complete_step,
     my_progress,
+    my_achievements,
+    available_achievements,
+    user_profile_gamification,
 )
 
 router = DefaultRouter()
@@ -30,6 +33,11 @@ urlpatterns = [
     # User progress endpoints
     path('my-progress/', my_progress, name='my-progress'),
     path('steps/<int:step_id>/complete/', complete_step, name='complete-step'),
+
+    # Gamification endpoints
+    path('my-achievements/', my_achievements, name='my-achievements'),
+    path('achievements/', available_achievements, name='available-achievements'),
+    path('profile/gamification/', user_profile_gamification, name='profile-gamification'),
 
     # Router URLs (learning-paths, progress)
     path('', include(router.urls)),

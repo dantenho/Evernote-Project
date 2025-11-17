@@ -26,6 +26,9 @@ from .models import (
     Trilha,
     Passo,
     UserProgress,
+    UserProfile,
+    Achievement,
+    UserAchievement,
 )
 from .serializers import (
     UserRegistrationSerializer,
@@ -35,6 +38,10 @@ from .serializers import (
     UserProgressDetailSerializer,
     CompleteStepSerializer,
     UserProgressSummarySerializer,
+    UserProfileSerializer,
+    AchievementSerializer,
+    UserAchievementSerializer,
+    UserAchievementSummarySerializer,
 )
 
 # Initialize logger for error tracking
@@ -503,6 +510,9 @@ def complete_step(request, step_id):
         # Validate step exists
         step = get_object_or_404(Passo, id=step_id)
 
+        # Track if this is the first completion for XP calculation
+        was_already_completed = False
+
         # Get or create progress record
         with transaction.atomic():
             progress, created = UserProgress.objects.get_or_create(
@@ -511,8 +521,28 @@ def complete_step(request, step_id):
                 defaults={'status': UserProgress.IN_PROGRESS}
             )
 
+            # Check if already completed before marking
+            was_already_completed = progress.status == UserProgress.COMPLETED
+
             # Mark as completed (idempotent)
             progress.mark_as_completed()
+
+            # Award XP only if this is the first completion (not re-completing)
+            xp_info = None
+            if not was_already_completed:
+                XP_PER_STEP = 10  # Base XP reward for completing a step
+                xp_info = user.profile.add_xp(XP_PER_STEP)
+
+                logger.info(
+                    f"XP awarded: {user.username} earned {XP_PER_STEP} XP for completing step {step_id}. "
+                    f"Total XP: {xp_info['new_xp']}, Level: {xp_info['new_level']}"
+                )
+
+                # Check if user leveled up
+                if xp_info['leveled_up']:
+                    logger.info(
+                        f"LEVEL UP! {user.username} reached level {xp_info['new_level']}"
+                    )
 
         # Invalidate progress summary cache
         cache_key = f'progress_summary_{user.id}'
@@ -526,11 +556,21 @@ def complete_step(request, step_id):
             f"by user {user.username}"
         )
 
-        return Response({
+        # Build response with XP information
+        response_data = {
             'detail': 'Step marked as completed.',
             'progress': serializer.data,
-            'created': created
-        }, status=status.HTTP_200_OK)
+            'created': created,
+        }
+
+        # Add XP information if awarded
+        if xp_info:
+            response_data['xp_earned'] = xp_info['xp_gained']
+            response_data['total_xp'] = xp_info['new_xp']
+            response_data['level'] = xp_info['new_level']
+            response_data['leveled_up'] = xp_info['leveled_up']
+
+        return Response(response_data, status=status.HTTP_200_OK)
 
     except Passo.DoesNotExist:
         logger.warning(f"User {user.username} attempted to complete non-existent step {step_id}")
@@ -583,5 +623,162 @@ def my_progress(request):
         logger.error(f"Error fetching progress for user {request.user.username}: {str(e)}")
         return Response(
             {'detail': 'Failed to fetch progress data.'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+# ============================================================================
+# Gamification Views
+# ============================================================================
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def my_achievements(request):
+    """
+    Get all achievements earned by the current user.
+
+    GET /api/v1/my-achievements/
+
+    Returns:
+        Response: User's earned achievements with summary statistics
+
+    Response format:
+        {
+            "total_achievements": int,      # Total achievements available
+            "earned_achievements": int,     # Number earned by user
+            "completion_percentage": float, # Percentage earned
+            "recent_achievements": [        # List of earned achievements
+                {
+                    "id": int,
+                    "achievement": {...},   # Achievement details
+                    "earned_at": datetime,
+                    "xp_awarded": int
+                }
+            ]
+        }
+    """
+    try:
+        user = request.user
+
+        # Get user's earned achievements
+        user_achievements = UserAchievement.objects.filter(
+            user=user
+        ).select_related(
+            'achievement',
+            'achievement__related_track',
+            'achievement__related_area'
+        ).order_by('-earned_at')
+
+        # Get total achievements count
+        total_achievements = Achievement.objects.count()
+        earned_count = user_achievements.count()
+
+        # Calculate completion percentage
+        completion_percentage = (
+            round((earned_count / total_achievements) * 100, 2)
+            if total_achievements > 0 else 0.0
+        )
+
+        # Build summary response
+        summary_data = {
+            'total_achievements': total_achievements,
+            'earned_achievements': earned_count,
+            'completion_percentage': completion_percentage,
+            'recent_achievements': UserAchievementSerializer(
+                user_achievements,
+                many=True,
+                context={'request': request}
+            ).data
+        }
+
+        logger.info(f"Achievement list fetched for user {user.username}")
+
+        return Response(summary_data)
+
+    except Exception as e:
+        logger.error(f"Error fetching achievements for user {request.user.username}: {str(e)}")
+        return Response(
+            {'detail': 'Failed to fetch achievements data.'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def available_achievements(request):
+    """
+    Get list of all available achievements in the system.
+
+    GET /api/v1/achievements/
+
+    Returns:
+        Response: List of all achievements with details
+
+    Note: This is a public endpoint to show users what achievements they can earn
+    """
+    try:
+        # Get all achievements ordered by order field
+        achievements = Achievement.objects.all().select_related(
+            'related_track',
+            'related_area'
+        ).order_by('order', 'name')
+
+        serializer = AchievementSerializer(
+            achievements,
+            many=True,
+            context={'request': request}
+        )
+
+        return Response(serializer.data)
+
+    except Exception as e:
+        logger.error(f"Error fetching available achievements: {str(e)}")
+        return Response(
+            {'detail': 'Failed to fetch achievements.'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def user_profile_gamification(request):
+    """
+    Get current user's gamification profile.
+
+    GET /api/v1/profile/gamification/
+
+    Returns:
+        Response: User profile with XP, level, and progress data
+
+    Response format:
+        {
+            "id": int,
+            "xp_points": int,
+            "level": int,
+            "xp_for_current_level": int,
+            "xp_for_next_level": int,
+            "progress_to_next_level": float,
+            "created_at": datetime,
+            "updated_at": datetime
+        }
+    """
+    try:
+        user = request.user
+        profile = user.profile
+
+        serializer = UserProfileSerializer(profile, context={'request': request})
+
+        return Response(serializer.data)
+
+    except UserProfile.DoesNotExist:
+        logger.error(f"Profile not found for user {user.username}")
+        return Response(
+            {'detail': 'User profile not found.'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except Exception as e:
+        logger.error(f"Error fetching gamification profile for user {request.user.username}: {str(e)}")
+        return Response(
+            {'detail': 'Failed to fetch profile data.'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
