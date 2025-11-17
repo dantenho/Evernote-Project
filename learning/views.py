@@ -17,6 +17,7 @@ from django.contrib.auth.models import User
 from django.db.models import Count, Q, Prefetch
 from django.db import transaction
 from django.shortcuts import get_object_or_404
+from django.http import Http404
 from django.core.cache import cache
 import logging
 
@@ -531,8 +532,7 @@ def complete_step(request, step_id):
             'progress': serializer.data,
             'created': created
         }, status=status.HTTP_200_OK)
-
-    except Passo.DoesNotExist:
+    except Http404:
         logger.warning(f"User {user.username} attempted to complete non-existent step {step_id}")
         raise NotFound('Step does not exist.')
     except Exception as e:
