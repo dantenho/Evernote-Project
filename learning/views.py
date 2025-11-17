@@ -26,6 +26,9 @@ from .models import (
     Trilha,
     Passo,
     UserProgress,
+    UserProfile,
+    Achievement,
+    UserAchievement,
 )
 from .serializers import (
     UserRegistrationSerializer,
@@ -35,6 +38,10 @@ from .serializers import (
     UserProgressDetailSerializer,
     CompleteStepSerializer,
     UserProgressSummarySerializer,
+    UserProfileSerializer,
+    AchievementSerializer,
+    UserAchievementSerializer,
+    UserAchievementSummarySerializer,
 )
 
 # Initialize logger for error tracking
@@ -503,6 +510,9 @@ def complete_step(request, step_id):
         # Validate step exists
         step = get_object_or_404(Passo, id=step_id)
 
+        # Track if this is the first completion for XP calculation
+        was_already_completed = False
+
         # Get or create progress record
         with transaction.atomic():
             progress, created = UserProgress.objects.get_or_create(
@@ -511,8 +521,28 @@ def complete_step(request, step_id):
                 defaults={'status': UserProgress.IN_PROGRESS}
             )
 
+            # Check if already completed before marking
+            was_already_completed = progress.status == UserProgress.COMPLETED
+
             # Mark as completed (idempotent)
             progress.mark_as_completed()
+
+            # Award XP only if this is the first completion (not re-completing)
+            xp_info = None
+            if not was_already_completed:
+                XP_PER_STEP = 10  # Base XP reward for completing a step
+                xp_info = user.profile.add_xp(XP_PER_STEP)
+
+                logger.info(
+                    f"XP awarded: {user.username} earned {XP_PER_STEP} XP for completing step {step_id}. "
+                    f"Total XP: {xp_info['new_xp']}, Level: {xp_info['new_level']}"
+                )
+
+                # Check if user leveled up
+                if xp_info['leveled_up']:
+                    logger.info(
+                        f"LEVEL UP! {user.username} reached level {xp_info['new_level']}"
+                    )
 
         # Invalidate progress summary cache
         cache_key = f'progress_summary_{user.id}'
@@ -526,11 +556,21 @@ def complete_step(request, step_id):
             f"by user {user.username}"
         )
 
-        return Response({
+        # Build response with XP information
+        response_data = {
             'detail': 'Step marked as completed.',
             'progress': serializer.data,
-            'created': created
-        }, status=status.HTTP_200_OK)
+            'created': created,
+        }
+
+        # Add XP information if awarded
+        if xp_info:
+            response_data['xp_earned'] = xp_info['xp_gained']
+            response_data['total_xp'] = xp_info['new_xp']
+            response_data['level'] = xp_info['new_level']
+            response_data['leveled_up'] = xp_info['leveled_up']
+
+        return Response(response_data, status=status.HTTP_200_OK)
 
     except Passo.DoesNotExist:
         logger.warning(f"User {user.username} attempted to complete non-existent step {step_id}")
@@ -585,3 +625,323 @@ def my_progress(request):
             {'detail': 'Failed to fetch progress data.'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
+
+# ============================================================================
+# Gamification Views
+# ============================================================================
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def my_achievements(request):
+    """
+    Get all achievements earned by the current user.
+
+    GET /api/v1/my-achievements/
+
+    Returns:
+        Response: User's earned achievements with summary statistics
+
+    Response format:
+        {
+            "total_achievements": int,      # Total achievements available
+            "earned_achievements": int,     # Number earned by user
+            "completion_percentage": float, # Percentage earned
+            "recent_achievements": [        # List of earned achievements
+                {
+                    "id": int,
+                    "achievement": {...},   # Achievement details
+                    "earned_at": datetime,
+                    "xp_awarded": int
+                }
+            ]
+        }
+    """
+    try:
+        user = request.user
+
+        # Get user's earned achievements
+        user_achievements = UserAchievement.objects.filter(
+            user=user
+        ).select_related(
+            'achievement',
+            'achievement__related_track',
+            'achievement__related_area'
+        ).order_by('-earned_at')
+
+        # Get total achievements count
+        total_achievements = Achievement.objects.count()
+        earned_count = user_achievements.count()
+
+        # Calculate completion percentage
+        completion_percentage = (
+            round((earned_count / total_achievements) * 100, 2)
+            if total_achievements > 0 else 0.0
+        )
+
+        # Build summary response
+        summary_data = {
+            'total_achievements': total_achievements,
+            'earned_achievements': earned_count,
+            'completion_percentage': completion_percentage,
+            'recent_achievements': UserAchievementSerializer(
+                user_achievements,
+                many=True,
+                context={'request': request}
+            ).data
+        }
+
+        logger.info(f"Achievement list fetched for user {user.username}")
+
+        return Response(summary_data)
+
+    except Exception as e:
+        logger.error(f"Error fetching achievements for user {request.user.username}: {str(e)}")
+        return Response(
+            {'detail': 'Failed to fetch achievements data.'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def available_achievements(request):
+    """
+    Get list of all available achievements in the system.
+
+    GET /api/v1/achievements/
+
+    Returns:
+        Response: List of all achievements with details
+
+    Note: This is a public endpoint to show users what achievements they can earn
+    """
+    try:
+        # Get all achievements ordered by order field
+        achievements = Achievement.objects.all().select_related(
+            'related_track',
+            'related_area'
+        ).order_by('order', 'name')
+
+        serializer = AchievementSerializer(
+            achievements,
+            many=True,
+            context={'request': request}
+        )
+
+        return Response(serializer.data)
+
+    except Exception as e:
+        logger.error(f"Error fetching available achievements: {str(e)}")
+        return Response(
+            {'detail': 'Failed to fetch achievements.'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def user_profile_gamification(request):
+    """
+    Get current user's gamification profile.
+
+    GET /api/v1/profile/gamification/
+
+    Returns:
+        Response: User profile with XP, level, and progress data
+
+    Response format:
+        {
+            "id": int,
+            "xp_points": int,
+            "level": int,
+            "xp_for_current_level": int,
+            "xp_for_next_level": int,
+            "progress_to_next_level": float,
+            "created_at": datetime,
+            "updated_at": datetime
+        }
+    """
+    try:
+        user = request.user
+        profile = user.profile
+
+        serializer = UserProfileSerializer(profile, context={'request': request})
+
+        return Response(serializer.data)
+
+    except UserProfile.DoesNotExist:
+        logger.error(f"Profile not found for user {user.username}")
+        return Response(
+            {'detail': 'User profile not found.'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except Exception as e:
+        logger.error(f"Error fetching gamification profile for user {request.user.username}: {str(e)}")
+        return Response(
+            {'detail': 'Failed to fetch profile data.'},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def generate_code_hint(request):
+    """
+    Generate AI-powered hints for code challenges.
+
+    This endpoint analyzes the user's code attempt and provides contextual hints
+    to help them solve the challenge without directly giving away the solution.
+
+    Args:
+        request: HTTP request with:
+            - step_id: ID of the code challenge step
+            - user_code: User's current code attempt
+            - attempt_number: Which attempt this is (1, 2, 3, etc.)
+            - error_message: Optional error message if code failed
+
+    Returns:
+        Response: AI-generated hint text
+
+    Response format:
+        {
+            "hint": str,
+            "hint_type": str ("syntax" | "logic" | "approach" | "solution"),
+            "confidence": float (0.0 - 1.0)
+        }
+    """
+    try:
+        # Get request data
+        step_id = request.data.get('step_id')
+        user_code = request.data.get('user_code', '')
+        attempt_number = request.data.get('attempt_number', 1)
+        error_message = request.data.get('error_message', '')
+
+        # Validate required fields
+        if not step_id:
+            return Response(
+                {'detail': 'step_id is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Get the step (code challenge)
+        try:
+            step = Passo.objects.get(id=step_id, content_type='code_challenge')
+        except Passo.DoesNotExist:
+            return Response(
+                {'detail': 'Code challenge not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # Import AI service
+        from .ai_services import get_ai_service, AIServiceError
+
+        # Try to get AI service (use any available provider)
+        try:
+            ai_service = get_ai_service()
+        except AIServiceError as e:
+            # If no AI service available, return fallback hints
+            logger.warning(f"No AI service available: {str(e)}")
+            return Response({
+                'hint': _get_fallback_hint(attempt_number, step, user_code, error_message),
+                'hint_type': 'fallback',
+                'confidence': 0.5
+            })
+
+        # Construct AI prompt for hint generation
+        system_prompt = """You are a helpful programming tutor. Your goal is to provide hints that guide the student towards the solution without giving away the answer directly.
+
+Guidelines:
+- For attempt 1-2: Give gentle nudges about syntax or approach
+- For attempt 3-4: Be more specific about what's wrong
+- For attempt 5+: Provide clearer direction but still let them think
+- Never write the complete solution
+- Be encouraging and positive
+- Focus on one issue at a time"""
+
+        user_prompt = f"""Exercise: {step.title}
+
+Description: {step.text_content[:500]}
+
+Expected Output:
+{step.expected_output}
+
+Student's Code (Attempt #{attempt_number}):
+```python
+{user_code}
+```
+
+{f"Error Message: {error_message}" if error_message else ""}
+
+Provide a helpful hint for this attempt. Keep it concise (2-3 sentences)."""
+
+        # Generate hint using AI
+        hint_text = ai_service.generate_content(system_prompt, user_prompt)
+
+        # Determine hint type based on content
+        hint_type = 'approach'
+        if 'syntax' in hint_text.lower() or 'error' in hint_text.lower():
+            hint_type = 'syntax'
+        elif attempt_number >= 5:
+            hint_type = 'detailed'
+        elif 'think about' in hint_text.lower() or 'consider' in hint_text.lower():
+            hint_type = 'logic'
+
+        return Response({
+            'hint': hint_text,
+            'hint_type': hint_type,
+            'confidence': 0.8
+        })
+
+    except Exception as e:
+        logger.error(f"Error generating code hint: {str(e)}")
+        # Return fallback hint on error
+        return Response({
+            'hint': _get_fallback_hint(
+                request.data.get('attempt_number', 1),
+                None,
+                request.data.get('user_code', ''),
+                request.data.get('error_message', '')
+            ),
+            'hint_type': 'fallback',
+            'confidence': 0.3
+        })
+
+
+def _get_fallback_hint(attempt_number, step, user_code, error_message):
+    """
+    Generate fallback hints when AI service is unavailable.
+
+    Args:
+        attempt_number: Which attempt this is
+        step: The Passo object (can be None)
+        user_code: User's code attempt
+        error_message: Error message if any
+
+    Returns:
+        str: Fallback hint text
+    """
+    # Basic hints based on attempt number
+    if attempt_number == 1:
+        return "Read the problem description carefully. What is the expected output? Think about what Python functions or operations you need to use."
+
+    elif attempt_number == 2:
+        if error_message:
+            if 'SyntaxError' in error_message:
+                return "There's a syntax error in your code. Check for missing colons, parentheses, or quotes."
+            elif 'NameError' in error_message:
+                return "You're using a variable or function that hasn't been defined. Check your variable names."
+            elif 'TypeError' in error_message:
+                return "You're using the wrong type of data. Check if you need to convert between strings and numbers."
+        return "Your code has an error. Check your syntax carefully - are all parentheses and quotes matched?"
+
+    elif attempt_number == 3:
+        return "Compare your output to the expected output. What's different? Focus on exact spacing, capitalization, and punctuation."
+
+    elif attempt_number == 4:
+        if step and step.solution:
+            return "You're getting close! Look at the structure of your code. Are you using the right function? Check the example in the instructions."
+        return "Think about the problem step by step. What does the program need to do first? What comes next?"
+
+    else:  # attempt_number >= 5
+        return "You've tried several times. Consider clicking the 'Solution' button to see the correct answer, then try to understand why it works."

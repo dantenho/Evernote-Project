@@ -33,6 +33,12 @@ const routes = [
     meta: { requiresAuth: true }
   },
   {
+    path: '/exercise/:trackId/:stepId',
+    name: 'StepExercise',
+    component: () => import('@/views/StepExerciseView.vue'),
+    meta: { requiresAuth: true }
+  },
+  {
     path: '/progress',
     name: 'Progress',
     component: () => import('@/views/ProgressView.vue'),
@@ -43,6 +49,18 @@ const routes = [
     name: 'Profile',
     component: () => import('@/views/ProfileView.vue'),
     meta: { requiresAuth: true }
+  },
+  {
+    path: '/ai-generator',
+    name: 'AIGenerator',
+    component: () => import('@/views/AIGeneratorView.vue'),
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/admin',
+    name: 'AdminDashboard',
+    component: () => import('@/views/AdminDashboardView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: true }
   }
 ]
 

@@ -1,0 +1,95 @@
+# ============================================================================
+# Dockerfile for LearnHub with AI Content Generation
+# ============================================================================
+# Multi-stage build for optimized AI-enabled deployment
+#
+# Build: docker build -f Dockerfile.ai -t learnhub-ai:latest .
+# Run:   docker-compose -f docker-compose.ai.yml up
+
+# -----------------------------------------------------------------------------
+# Stage 1: Base Python Environment
+# -----------------------------------------------------------------------------
+FROM python:3.11-slim as base
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    DEBIAN_FRONTEND=noninteractive
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    libpq-dev \
+    curl \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create app directory
+WORKDIR /app
+
+# -----------------------------------------------------------------------------
+# Stage 2: Dependencies Installation
+# -----------------------------------------------------------------------------
+FROM base as dependencies
+
+# Copy requirements files
+COPY requirements.txt requirements-ai.txt ./
+
+# Install Python dependencies
+# Install base requirements first, then AI requirements
+RUN pip install --upgrade pip && \
+    pip install -r requirements.txt && \
+    pip install -r requirements-ai.txt
+
+# -----------------------------------------------------------------------------
+# Stage 3: Application
+# -----------------------------------------------------------------------------
+FROM dependencies as application
+
+# Copy application code
+COPY . .
+
+# Create directories for static files and media
+RUN mkdir -p /app/staticfiles /app/mediafiles
+
+# Collect static files
+RUN python manage.py collectstatic --noinput || true
+
+# Create non-root user for security
+RUN useradd -m -u 1000 appuser && \
+    chown -R appuser:appuser /app
+USER appuser
+
+# Expose port
+EXPOSE 8000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD curl -f http://localhost:8000/api/v1/auth/profile/ || exit 1
+
+# Default command
+CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "4", "--timeout", "120", "evernote_project.wsgi:application"]
+
+# -----------------------------------------------------------------------------
+# Stage 4: GPU-Enabled (Optional)
+# -----------------------------------------------------------------------------
+FROM application as gpu
+
+USER root
+
+# Install CUDA dependencies for GPU support
+RUN apt-get update && apt-get install -y \
+    cuda-toolkit-11-8 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Reinstall PyTorch with CUDA support
+RUN pip uninstall -y torch torchvision torchaudio && \
+    pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+
+USER appuser
+
+# Set CUDA environment variables
+ENV CUDA_VISIBLE_DEVICES=0
+ENV PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512

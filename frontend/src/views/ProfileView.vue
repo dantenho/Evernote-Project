@@ -11,8 +11,32 @@
       <!-- Profile Content -->
       <div v-else class="space-y-6">
         <!-- Profile Information -->
-        <div class="card bg-white">
-          <h2 class="text-xl font-bold text-gray-900 mb-6">Profile Information</h2>
+        <div class="card bg-white dark:bg-dark-card">
+          <h2 class="text-xl font-bold text-gray-900 dark:text-dark-primary mb-6">Profile Information</h2>
+
+          <!-- Avatar Section -->
+          <div class="mb-8 pb-8 border-b border-gray-200 dark:border-dark">
+            <h3 class="text-sm font-semibold text-gray-700 dark:text-dark-secondary mb-4">Profile Avatar</h3>
+            <div class="flex items-center space-x-6">
+              <UserAvatar
+                :avatar-data="currentAvatar"
+                :alt="authStore.user?.first_name || 'User'"
+                size="xl"
+                editable
+                bg-color="#e0e7ff"
+                @update:avatar="updateAvatar"
+              />
+              <div class="flex-1">
+                <p class="text-sm text-gray-600 dark:text-dark-secondary mb-2">
+                  Click on your avatar to change it. Choose from preset emojis or use a custom image URL.
+                </p>
+                <div v-if="avatarSuccess" class="text-sm text-green-600 dark:text-green-400 flex items-center space-x-1">
+                  <span>✓</span>
+                  <span>Avatar updated successfully!</span>
+                </div>
+              </div>
+            </div>
+          </div>
 
           <form @submit.prevent="handleSubmit" class="space-y-6">
             <div v-if="error" class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
@@ -123,34 +147,101 @@
           </div>
         </div>
 
-        <!-- Account Stats (Optional) -->
-        <div class="card bg-gradient-to-br from-primary-50 to-green-100">
-          <h2 class="text-xl font-bold text-gray-900 mb-4">Your Learning Journey</h2>
+        <!-- Account Stats -->
+        <div class="card bg-gradient-to-br from-primary-50 via-purple-50 to-pink-50 animate-fade-in">
+          <h2 class="text-xl font-bold text-gray-900 mb-6">🎯 Your Learning Journey</h2>
 
+          <!-- Rank Display Banner -->
+          <div v-if="authStore.user?.profile" class="mb-6 p-6 bg-white rounded-xl shadow-md border-2 animate-scale-in" :style="{ borderColor: authStore.user.profile.rank_color || '#3B82F6' }">
+            <div class="flex items-center justify-between flex-wrap gap-4">
+              <!-- Rank Info -->
+              <div class="flex items-center space-x-4">
+                <div class="text-5xl animate-bounce-subtle">
+                  {{ authStore.user.profile.rank_icon || '🏆' }}
+                </div>
+                <div>
+                  <div class="text-sm text-gray-600 mb-1">Current Rank</div>
+                  <div class="text-3xl font-bold" :style="{ color: authStore.user.profile.rank_color || '#000' }">
+                    {{ authStore.user.profile.rank_name || 'Latão' }}
+                  </div>
+                  <div class="text-sm text-gray-500 mt-1">
+                    {{ authStore.user.profile.xp_points }} XP Total
+                  </div>
+                </div>
+              </div>
+
+              <!-- Streak Display -->
+              <div class="text-center px-6 py-3 bg-gradient-to-r from-orange-50 to-red-50 rounded-lg border border-orange-200">
+                <div class="flex items-center justify-center space-x-2 mb-1">
+                  <span class="text-3xl animate-flicker">🔥</span>
+                  <span class="text-3xl font-bold text-orange-600">
+                    {{ authStore.user.profile.current_streak || 0 }}
+                  </span>
+                </div>
+                <div class="text-xs text-gray-600">Day Streak</div>
+                <div v-if="authStore.user.profile.longest_streak > 0" class="text-xs text-gray-500 mt-1">
+                  Best: {{ authStore.user.profile.longest_streak }} days
+                </div>
+              </div>
+            </div>
+
+            <!-- Rank Progress Bar -->
+            <div class="mt-6">
+              <div class="flex items-center justify-between text-sm text-gray-700 mb-2">
+                <span class="font-semibold">Progress to {{ authStore.user.profile.next_rank_name || 'Max Rank' }}</span>
+                <span class="font-semibold">
+                  {{ authStore.user.profile.xp_in_current_rank || 0 }} / {{ authStore.user.profile.xp_for_next_rank || 100 }} XP
+                </span>
+              </div>
+              <div class="w-full h-4 bg-gray-200 rounded-full overflow-hidden shadow-inner">
+                <div
+                  class="h-full rounded-full transition-all duration-700 ease-out animate-pulse-subtle"
+                  :style="{
+                    width: `${authStore.user.profile.progress_to_next_rank || 0}%`,
+                    background: `linear-gradient(90deg, ${authStore.user.profile.rank_color || '#3B82F6'}, ${authStore.user.profile.rank_color || '#8B5CF6'})`
+                  }"
+                ></div>
+              </div>
+              <div class="text-xs text-gray-500 mt-1 text-right">
+                {{ Math.round(authStore.user.profile.progress_to_next_rank || 0) }}% complete
+              </div>
+            </div>
+          </div>
+
+          <!-- Quick Stats Grid -->
           <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div class="text-center">
+            <div class="text-center p-4 bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow animate-slide-up" style="animation-delay: 0.1s">
               <div class="text-2xl font-bold text-primary-700">
                 {{ authStore.user.date_joined ? daysSinceJoined : 0 }}
               </div>
               <div class="text-sm text-gray-600">Days Active</div>
             </div>
 
-            <div class="text-center">
-              <div class="text-2xl font-bold text-primary-700">-</div>
+            <div class="text-center p-4 bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow animate-slide-up" style="animation-delay: 0.2s">
+              <div class="text-2xl font-bold text-purple-700">
+                {{ authStore.user?.profile?.xp_points || 0 }}
+              </div>
               <div class="text-sm text-gray-600">Total XP</div>
             </div>
 
-            <div class="text-center">
-              <div class="text-2xl font-bold text-primary-700">-</div>
-              <div class="text-sm text-gray-600">Streak</div>
+            <div class="text-center p-4 bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow animate-slide-up" style="animation-delay: 0.3s">
+              <div class="text-2xl font-bold" :style="{ color: authStore.user?.profile?.rank_color || '#16A34A' }">
+                {{ authStore.user?.profile?.rank_icon || '🏆' }} Tier {{ authStore.user?.profile?.rank_tier || 0 }}
+              </div>
+              <div class="text-sm text-gray-600">Rank Tier</div>
             </div>
 
-            <div class="text-center">
-              <div class="text-2xl font-bold text-primary-700">-</div>
+            <div class="text-center p-4 bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow animate-slide-up" style="animation-delay: 0.4s">
+              <div class="text-2xl font-bold text-orange-700">
+                🏆 {{ achievementsCount }}
+              </div>
               <div class="text-sm text-gray-600">Achievements</div>
             </div>
           </div>
         </div>
+
+        <!-- Achievements Section -->
+        <AchievementsList ref="achievementsListRef" @achievements-loaded="updateAchievementsCount" />
       </div>
     </div>
   </div>
@@ -160,6 +251,9 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { authAPI } from '@/services/api'
+import AchievementsList from '@/components/AchievementsList.vue'
+import UserAvatar from '@/components/UserAvatar.vue'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -168,6 +262,12 @@ const loading = ref(true)
 const saving = ref(false)
 const error = ref(null)
 const success = ref(null)
+const achievementsCount = ref(0)
+const achievementsListRef = ref(null)
+
+// Avatar state
+const currentAvatar = ref({ type: 'preset', value: '👨‍💻' })
+const avatarSuccess = ref(false)
 
 const form = ref({
   first_name: '',
@@ -182,24 +282,6 @@ const daysSinceJoined = computed(() => {
   const now = new Date()
   const diffMs = now - joinDate
   return Math.floor(diffMs / (1000 * 60 * 60 * 24))
-})
-
-onMounted(async () => {
-  loading.value = true
-  error.value = null
-
-  try {
-    // Fetch fresh profile data
-    await authStore.fetchProfile()
-
-    // Initialize form with current data
-    resetForm()
-  } catch (err) {
-    error.value = 'Failed to load profile. Please try again.'
-    console.error('Profile load error:', err)
-  } finally {
-    loading.value = false
-  }
 })
 
 const resetForm = () => {
@@ -235,4 +317,77 @@ const handleLogout = async () => {
   await authStore.logout()
   router.push('/login')
 }
+
+const updateAchievementsCount = (count) => {
+  achievementsCount.value = count
+}
+
+// Load achievements count on mount
+const loadAchievementsCount = async () => {
+  try {
+    const { gamificationAPI } = await import('@/services/api')
+    const response = await gamificationAPI.getMyAchievements()
+    achievementsCount.value = response.data.earned_achievements
+  } catch (err) {
+    console.error('Failed to load achievements count:', err)
+  }
+}
+
+const updateAvatar = async (avatarData) => {
+  avatarSuccess.value = false
+  try {
+    // Update current avatar immediately for UI
+    currentAvatar.value = avatarData
+
+    // TODO: Send to backend when API endpoint is ready
+    // For now, just update local state
+    if (authStore.user?.profile) {
+      if (avatarData.type === 'url') {
+        authStore.user.profile.avatar_url = avatarData.value
+        authStore.user.profile.avatar_preset = null
+      } else {
+        authStore.user.profile.avatar_preset = avatarData.value
+        authStore.user.profile.avatar_url = null
+      }
+    }
+
+    avatarSuccess.value = true
+    setTimeout(() => {
+      avatarSuccess.value = false
+    }, 3000)
+  } catch (err) {
+    console.error('Failed to update avatar:', err)
+  }
+}
+
+onMounted(async () => {
+  loading.value = true
+  error.value = null
+
+  try {
+    // Fetch fresh profile data
+    await authStore.fetchProfile()
+
+    // Load achievements count
+    await loadAchievementsCount()
+
+    // Initialize avatar from profile
+    const profile = authStore.user?.profile
+    if (profile) {
+      if (profile.avatar_url) {
+        currentAvatar.value = { type: 'url', value: profile.avatar_url }
+      } else {
+        currentAvatar.value = { type: 'preset', value: profile.avatar_preset || '👨‍💻' }
+      }
+    }
+
+    // Initialize form with current data
+    resetForm()
+  } catch (err) {
+    error.value = 'Failed to load profile. Please try again.'
+    console.error('Profile load error:', err)
+  } finally {
+    loading.value = false
+  }
+})
 </script>

@@ -202,9 +202,11 @@ class Passo(models.Model):
     # Content type constants
     LESSON = 'lesson'
     QUIZ = 'quiz'
+    CODE_CHALLENGE = 'code_challenge'
     CONTENT_CHOICES = (
         (LESSON, 'Lição'),
         (QUIZ, 'Quiz'),
+        (CODE_CHALLENGE, 'Desafio de Código'),
     )
 
     title = models.CharField(
@@ -219,7 +221,7 @@ class Passo(models.Model):
         verbose_name="Trilha"
     )
     content_type = models.CharField(
-        max_length=10,
+        max_length=20,
         choices=CONTENT_CHOICES,
         default=LESSON,
         db_index=True,  # Index for filtering by content type
@@ -250,6 +252,32 @@ class Passo(models.Model):
         validators=[MinValueValidator(0)],
         verbose_name="Ordem",
         help_text="Display order within the track"
+    )
+
+    # Code challenge fields
+    code_snippet = models.TextField(
+        blank=True,
+        null=True,
+        verbose_name="Código Inicial",
+        help_text="Initial code template for code challenges"
+    )
+    expected_output = models.TextField(
+        blank=True,
+        null=True,
+        verbose_name="Saída Esperada",
+        help_text="Expected output for code challenges"
+    )
+    solution = models.TextField(
+        blank=True,
+        null=True,
+        verbose_name="Solução",
+        help_text="Solution code (hidden from students)"
+    )
+    xp_reward = models.PositiveSmallIntegerField(
+        default=10,
+        validators=[MinValueValidator(1), MaxValueValidator(100)],
+        verbose_name="Recompensa XP",
+        help_text="XP points awarded for completing this step"
     )
 
     class Meta:
@@ -591,3 +619,659 @@ class UserProgress(models.Model):
             'in_progress_steps': total - completed,
             'percentage': percentage
         }
+
+
+# ============================================================================
+# AI Content Generation Models
+# ============================================================================
+
+class AIProvider(models.Model):
+    """
+    Configuration for AI content generation providers.
+
+    Supports multiple providers: Claude (Anthropic), Gemini (Google),
+    Ollama (local), and custom OpenAI-compatible endpoints.
+    """
+
+    # Provider types
+    CLAUDE = 'claude'
+    GEMINI = 'gemini'
+    OLLAMA = 'ollama'
+    CUSTOM = 'custom'
+    TRANSFORMERS = 'transformers'
+    LANGCHAIN = 'langchain'
+
+    PROVIDER_TYPES = (
+        (CLAUDE, 'Claude (Anthropic)'),
+        (GEMINI, 'Gemini (Google)'),
+        (OLLAMA, 'Ollama (Local)'),
+        (TRANSFORMERS, 'Transformers (Hugging Face Local)'),
+        (LANGCHAIN, 'LangChain'),
+        (CUSTOM, 'Custom Model'),
+    )
+
+    name = models.CharField(
+        max_length=100,
+        unique=True,
+        verbose_name="Nome",
+        help_text="Display name for this provider"
+    )
+    provider_type = models.CharField(
+        max_length=20,
+        choices=PROVIDER_TYPES,
+        verbose_name="Tipo de Provider",
+        help_text="Type of AI provider"
+    )
+    api_key = models.CharField(
+        max_length=500,
+        blank=True,
+        verbose_name="API Key",
+        help_text="API key for authentication (leave empty for Ollama)"
+    )
+    api_endpoint = models.URLField(
+        blank=True,
+        verbose_name="API Endpoint",
+        help_text="API endpoint URL"
+    )
+    model_name = models.CharField(
+        max_length=100,
+        verbose_name="Nome do Modelo",
+        help_text="Model identifier"
+    )
+    is_active = models.BooleanField(
+        default=True,
+        verbose_name="Ativo"
+    )
+    max_tokens = models.PositiveIntegerField(default=2000)
+    temperature = models.FloatField(
+        default=0.7,
+        validators=[MinValueValidator(0.0), MaxValueValidator(2.0)]
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "AI Provider"
+        verbose_name_plural = "AI Providers"
+        ordering = ['-is_active', 'name']
+
+    def __str__(self):
+        return f"{self.name} ({self.get_provider_type_display()})"
+
+
+class ContentTemplate(models.Model):
+    """Templates for AI content generation prompts."""
+
+    STEP_LESSON = 'step_lesson'
+    STEP_QUIZ = 'step_quiz'
+    QUIZ_QUESTIONS = 'quiz_questions'
+
+    CONTENT_TYPES = (
+        (STEP_LESSON, 'Step - Lesson'),
+        (STEP_QUIZ, 'Step - Quiz'),
+        (QUIZ_QUESTIONS, 'Quiz Questions'),
+    )
+
+    name = models.CharField(max_length=100, unique=True)
+    content_type = models.CharField(max_length=20, choices=CONTENT_TYPES)
+    system_prompt = models.TextField()
+    user_prompt_template = models.TextField(
+        help_text="Use {{variable}} for placeholders"
+    )
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Content Template"
+        verbose_name_plural = "Content Templates"
+
+    def __str__(self):
+        return f"{self.name} ({self.get_content_type_display()})"
+
+    def render_prompt(self, **kwargs):
+        """Render prompt template with variables."""
+        template = self.user_prompt_template
+        for key, value in kwargs.items():
+            template = template.replace(f"{{{{{key}}}}}", str(value))
+        return template
+
+
+class GeneratedContent(models.Model):
+    """Track AI-generated content for auditing."""
+
+    provider = models.ForeignKey(AIProvider, on_delete=models.SET_NULL, null=True)
+    template = models.ForeignKey(ContentTemplate, on_delete=models.SET_NULL, null=True)
+    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
+    prompt = models.TextField()
+    generated_text = models.TextField()
+    parsed_content = models.JSONField(default=dict)
+    tokens_used = models.PositiveIntegerField(default=0)
+    generation_time = models.FloatField(default=0.0)
+    was_successful = models.BooleanField(default=True)
+    error_message = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        verbose_name = "Generated Content"
+        verbose_name_plural = "Generated Contents"
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"Generated by {self.provider} at {self.created_at.strftime('%Y-%m-%d %H:%M')}"
+
+
+# ============================================================================
+# Gamification Models
+# ============================================================================
+
+class UserProfile(models.Model):
+    """
+    Extended user profile for gamification features.
+
+    Stores XP points, calculates rank tier, tracks achievements and streaks.
+    One-to-one relationship with Django's User model.
+    """
+
+    user = models.OneToOneField(
+        User,
+        on_delete=models.CASCADE,
+        related_name='profile',
+        verbose_name="Usuário",
+        help_text="The user this profile belongs to"
+    )
+    xp_points = models.PositiveIntegerField(
+        default=0,
+        db_index=True,  # Index for leaderboard queries
+        verbose_name="Pontos de Experiência",
+        help_text="Total experience points earned"
+    )
+    current_streak = models.PositiveIntegerField(
+        default=0,
+        verbose_name="Sequência Atual",
+        help_text="Current consecutive days of activity"
+    )
+    longest_streak = models.PositiveIntegerField(
+        default=0,
+        verbose_name="Maior Sequência",
+        help_text="Longest streak of consecutive days"
+    )
+    last_activity_date = models.DateField(
+        null=True,
+        blank=True,
+        verbose_name="Última Atividade",
+        help_text="Date of last activity for streak tracking"
+    )
+
+    # Avatar fields
+    avatar_url = models.URLField(
+        max_length=500,
+        null=True,
+        blank=True,
+        verbose_name="Avatar URL",
+        help_text="URL to user's custom avatar image"
+    )
+    avatar_preset = models.CharField(
+        max_length=50,
+        null=True,
+        blank=True,
+        default='👨‍💻',
+        verbose_name="Avatar Predefinido",
+        help_text="Preset avatar identifier (emoji or icon name)"
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    # Preset avatar options
+    PRESET_AVATARS = [
+        '👨‍💻', '👩‍💻', '🧑‍💻', '👨‍🎓', '👩‍🎓', '🧑‍🎓',
+        '🦸‍♂️', '🦸‍♀️', '🦸', '🧙‍♂️', '🧙‍♀️', '🧙',
+        '🐱', '🐶', '🦊', '🐼', '🐨', '🦁',
+        '🚀', '⭐', '🌟', '💎', '🏆', '🎯',
+    ]
+
+    class Meta:
+        verbose_name = "Perfil do Usuário"
+        verbose_name_plural = "Perfis dos Usuários"
+        ordering = ['-xp_points']  # Order by XP for leaderboards
+        indexes = [
+            models.Index(fields=['-xp_points']),  # For leaderboard queries
+        ]
+
+    # Rank tiers configuration (XP thresholds)
+    RANK_TIERS = [
+        # (min_xp, rank_name, tier_number, color, icon)
+        (0, "Latão", 0, "#CD7F32", "🥉"),
+        (100, "Bronze III", 1, "#8B4513", "🥉"),
+        (200, "Bronze II", 2, "#A0522D", "🥉"),
+        (300, "Bronze I", 3, "#B87333", "🥉"),
+        (500, "Prata III", 4, "#A8A8A8", "🥈"),
+        (700, "Prata II", 5, "#B8B8B8", "🥈"),
+        (900, "Prata I", 6, "#C0C0C0", "🥈"),
+        (1200, "Ouro III", 7, "#DAA520", "🥇"),
+        (1600, "Ouro II", 8, "#FFD700", "🥇"),
+        (2000, "Ouro I", 9, "#FFA500", "🥇"),
+        (2500, "Platina III", 10, "#0080FF", "💎"),
+        (3200, "Platina II", 11, "#00A0FF", "💎"),
+        (4000, "Platina I", 12, "#00BFFF", "💎"),
+        (5000, "Diamante III", 13, "#00CED1", "💠"),
+        (6500, "Diamante II", 14, "#40E0D0", "💠"),
+        (8000, "Diamante I", 15, "#48D1CC", "💠"),
+        (10000, "Mestre III", 16, "#9370DB", "👑"),
+        (13000, "Mestre II", 17, "#8A2BE2", "👑"),
+        (16000, "Mestre I", 18, "#9932CC", "👑"),
+        (20000, "Grão-Mestre III", 19, "#FF00FF", "⭐"),
+        (25000, "Grão-Mestre II", 20, "#FF1493", "⭐"),
+        (30000, "Grão-Mestre I", 21, "#FF69B4", "⭐"),
+        (40000, "Lenda", 22, "#FFD700", "🏆"),
+    ]
+
+    def __str__(self):
+        return f"{self.user.username} - {self.rank_name} ({self.xp_points} XP)"
+
+    @property
+    def rank_data(self):
+        """
+        Get complete rank information for current XP.
+
+        Returns:
+            dict: Rank data including name, tier, color, icon, progress
+        """
+        current_rank = None
+        next_rank = None
+
+        for i, (min_xp, name, tier, color, icon) in enumerate(self.RANK_TIERS):
+            if self.xp_points >= min_xp:
+                current_rank = {
+                    'min_xp': min_xp,
+                    'name': name,
+                    'tier': tier,
+                    'color': color,
+                    'icon': icon
+                }
+                # Get next rank if exists
+                if i + 1 < len(self.RANK_TIERS):
+                    next_min_xp, next_name, next_tier, next_color, next_icon = self.RANK_TIERS[i + 1]
+                    next_rank = {
+                        'min_xp': next_min_xp,
+                        'name': next_name,
+                        'tier': next_tier,
+                        'color': next_color,
+                        'icon': next_icon
+                    }
+            else:
+                break
+
+        # Calculate progress to next rank
+        if current_rank and next_rank:
+            xp_in_current_rank = self.xp_points - current_rank['min_xp']
+            xp_needed_for_next = next_rank['min_xp'] - current_rank['min_xp']
+            progress_percentage = min(100, (xp_in_current_rank / xp_needed_for_next) * 100)
+        else:
+            xp_in_current_rank = 0
+            xp_needed_for_next = 0
+            progress_percentage = 100  # Max rank achieved
+
+        return {
+            'current': current_rank or self.RANK_TIERS[0],
+            'next': next_rank,
+            'xp_in_current_rank': xp_in_current_rank,
+            'xp_needed_for_next': xp_needed_for_next,
+            'progress_percentage': round(progress_percentage, 2)
+        }
+
+    @property
+    def avatar(self):
+        """
+        Get user's avatar (URL if custom, otherwise preset emoji).
+
+        Returns:
+            dict: Avatar data with type and value
+        """
+        if self.avatar_url:
+            return {
+                'type': 'url',
+                'value': self.avatar_url
+            }
+        return {
+            'type': 'preset',
+            'value': self.avatar_preset or self.PRESET_AVATARS[0]
+        }
+
+    @property
+    def rank_name(self):
+        """Get current rank name based on XP."""
+        return self.rank_data['current']['name']
+
+    @property
+    def rank_tier(self):
+        """Get current rank tier number."""
+        return self.rank_data['current']['tier']
+
+    @property
+    def rank_color(self):
+        """Get current rank color."""
+        return self.rank_data['current']['color']
+
+    @property
+    def rank_icon(self):
+        """Get current rank icon."""
+        return self.rank_data['current']['icon']
+
+    @property
+    def next_rank_name(self):
+        """Get next rank name or None if at max rank."""
+        next_rank = self.rank_data['next']
+        return next_rank['name'] if next_rank else None
+
+    @property
+    def xp_for_next_rank(self):
+        """Get XP needed to reach next rank."""
+        return self.rank_data['xp_needed_for_next']
+
+    @property
+    def progress_to_next_rank(self):
+        """Get progress percentage to next rank."""
+        return self.rank_data['progress_percentage']
+
+    # Legacy properties for backwards compatibility
+    @property
+    def level(self):
+        """Legacy property - returns rank tier number."""
+        return self.rank_tier
+
+    @property
+    def xp_for_current_level(self):
+        """Legacy property - returns XP in current rank."""
+        return self.rank_data['xp_in_current_rank']
+
+    @property
+    def xp_for_next_level(self):
+        """Legacy property - returns XP needed for next rank."""
+        return self.xp_for_next_rank
+
+    @property
+    def progress_to_next_level(self):
+        """Legacy property - returns progress to next rank."""
+        return self.progress_to_next_rank
+
+    def update_streak(self):
+        """
+        Update user's activity streak.
+        Call this when user completes an activity.
+
+        Returns:
+            dict: Streak information including milestone achievements
+        """
+        from django.utils import timezone
+        today = timezone.now().date()
+
+        streak_info = {
+            'streak_continued': False,
+            'streak_broken': False,
+            'milestone_reached': None,
+            'current_streak': self.current_streak,
+            'longest_streak': self.longest_streak
+        }
+
+        if self.last_activity_date == today:
+            # Already active today, no change
+            return streak_info
+
+        if self.last_activity_date == today - timezone.timedelta(days=1):
+            # Consecutive day - increment streak
+            self.current_streak += 1
+            streak_info['streak_continued'] = True
+        else:
+            # Streak broken or first activity
+            if self.current_streak > 0:
+                streak_info['streak_broken'] = True
+            self.current_streak = 1
+
+        # Update longest streak if needed
+        if self.current_streak > self.longest_streak:
+            self.longest_streak = self.current_streak
+
+        # Check for milestone achievements
+        milestones = [7, 15, 30, 50, 100, 365]
+        if self.current_streak in milestones:
+            streak_info['milestone_reached'] = self.current_streak
+
+        self.last_activity_date = today
+        self.save(update_fields=['current_streak', 'longest_streak', 'last_activity_date', 'updated_at'])
+
+        return streak_info
+
+    def add_xp(self, amount):
+        """
+        Add experience points to user profile and update streak.
+
+        Args:
+            amount: Number of XP points to add
+
+        Returns:
+            dict: Information about rank changes and streak
+                - old_rank: Rank name before adding XP
+                - new_rank: Rank name after adding XP
+                - rank_up: Whether user ranked up
+                - new_xp: Total XP after addition
+                - xp_gained: Amount of XP added
+                - streak_info: Current streak information
+        """
+        old_rank_data = self.rank_data
+        old_rank = old_rank_data['current']['name']
+
+        self.xp_points += amount
+        self.save(update_fields=['xp_points', 'updated_at'])
+
+        new_rank_data = self.rank_data
+        new_rank = new_rank_data['current']['name']
+
+        # Update streak
+        streak_info = self.update_streak()
+
+        return {
+            'old_rank': old_rank,
+            'new_rank': new_rank,
+            'rank_up': old_rank != new_rank,
+            'new_xp': self.xp_points,
+            'xp_gained': amount,
+            'streak_info': streak_info,
+            # Legacy fields for backwards compatibility
+            'old_level': old_rank_data['current']['tier'],
+            'new_level': new_rank_data['current']['tier'],
+            'leveled_up': old_rank != new_rank
+        }
+
+
+class Achievement(models.Model):
+    """
+    Define available achievements/badges that users can earn.
+
+    Achievements are awarded based on specific conditions like
+    completing tracks, reaching levels, or earning XP milestones.
+    """
+
+    # Achievement types
+    FIRST_STEP = 'first_step'
+    TRACK_COMPLETE = 'track_complete'
+    AREA_COMPLETE = 'area_complete'
+    RANK_MILESTONE = 'rank_milestone'
+    XP_MILESTONE = 'xp_milestone'
+    STREAK_MILESTONE = 'streak_milestone'
+    COURSE_BADGE = 'course_badge'
+
+    ACHIEVEMENT_TYPES = (
+        (FIRST_STEP, 'Primeiro Passo Completado'),
+        (TRACK_COMPLETE, 'Trilha Completada'),
+        (AREA_COMPLETE, 'Área Completada'),
+        (RANK_MILESTONE, 'Marco de Rank'),
+        (XP_MILESTONE, 'Marco de XP'),
+        (STREAK_MILESTONE, 'Marco de Sequência'),
+        (COURSE_BADGE, 'Badge de Curso'),
+    )
+
+    # Icon choices for UI selection
+    ICON_CHOICES = [
+        ('🏆', 'Troféu'),
+        ('🥇', 'Medalha de Ouro'),
+        ('🥈', 'Medalha de Prata'),
+        ('🥉', 'Medalha de Bronze'),
+        ('⭐', 'Estrela'),
+        ('🌟', 'Estrela Brilhante'),
+        ('💫', 'Estrelas Giratórias'),
+        ('✨', 'Brilhos'),
+        ('🎯', 'Alvo'),
+        ('🎖️', 'Medalha Militar'),
+        ('👑', 'Coroa'),
+        ('💎', 'Diamante'),
+        ('💠', 'Diamante com Ponto'),
+        ('🔥', 'Fogo'),
+        ('⚡', 'Raio'),
+        ('🚀', 'Foguete'),
+        ('🎓', 'Formatura'),
+        ('📚', 'Livros'),
+        ('📖', 'Livro Aberto'),
+        ('✅', 'Check'),
+        ('💯', '100 Pontos'),
+        ('🎨', 'Arte'),
+        ('🧠', 'Cérebro'),
+        ('💪', 'Força'),
+        ('🏅', 'Medalha Esportiva'),
+        ('🌈', 'Arco-Íris'),
+        ('🔱', 'Tridente'),
+        ('⚔️', 'Espadas Cruzadas'),
+        ('🛡️', 'Escudo'),
+        ('🎪', 'Tenda de Circo'),
+    ]
+
+    name = models.CharField(
+        max_length=100,
+        unique=True,
+        db_index=True,
+        verbose_name="Nome",
+        help_text="Achievement name"
+    )
+    description = models.TextField(
+        verbose_name="Descrição",
+        help_text="Description of how to earn this achievement"
+    )
+    achievement_type = models.CharField(
+        max_length=20,
+        choices=ACHIEVEMENT_TYPES,
+        db_index=True,
+        verbose_name="Tipo",
+        help_text="Type of achievement"
+    )
+    icon = models.CharField(
+        max_length=50,
+        default='🏆',
+        verbose_name="Ícone",
+        help_text="Emoji or icon identifier for this achievement"
+    )
+    xp_reward = models.PositiveIntegerField(
+        default=0,
+        verbose_name="Recompensa XP",
+        help_text="Bonus XP awarded when earning this achievement"
+    )
+    # For track/area completion achievements
+    related_track = models.ForeignKey(
+        Trilha,
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        verbose_name="Trilha Relacionada",
+        help_text="Track this achievement is for (if applicable)"
+    )
+    related_area = models.ForeignKey(
+        Area,
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        verbose_name="Área Relacionada",
+        help_text="Area this achievement is for (if applicable)"
+    )
+    # For milestone achievements
+    required_value = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        verbose_name="Valor Necessário",
+        help_text="Required level/XP for milestone achievements"
+    )
+    order = models.PositiveSmallIntegerField(
+        default=0,
+        verbose_name="Ordem",
+        help_text="Display order for achievements list"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Conquista"
+        verbose_name_plural = "Conquistas"
+        ordering = ['order', 'name']
+        indexes = [
+            models.Index(fields=['achievement_type']),
+            models.Index(fields=['order']),
+        ]
+
+    def __str__(self):
+        return f"{self.icon} {self.name}"
+
+    def clean(self):
+        """
+        Validate achievement data.
+
+        Ensures milestone achievements have required_value set.
+        """
+        super().clean()
+
+        if self.achievement_type in [self.RANK_MILESTONE, self.XP_MILESTONE, self.STREAK_MILESTONE]:
+            if not self.required_value:
+                raise ValidationError(
+                    f"{self.get_achievement_type_display()} achievements must have a required_value."
+                )
+
+
+class UserAchievement(models.Model):
+    """
+    Through model linking users to their earned achievements.
+
+    Tracks when achievements were earned and if bonus XP was awarded.
+    """
+
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='achievements',
+        verbose_name="Usuário"
+    )
+    achievement = models.ForeignKey(
+        Achievement,
+        on_delete=models.CASCADE,
+        related_name='earned_by',
+        verbose_name="Conquista"
+    )
+    earned_at = models.DateTimeField(
+        auto_now_add=True,
+        db_index=True,
+        verbose_name="Conquistado em",
+        help_text="When this achievement was earned"
+    )
+    xp_awarded = models.PositiveIntegerField(
+        default=0,
+        verbose_name="XP Concedido",
+        help_text="Bonus XP awarded for this achievement"
+    )
+
+    class Meta:
+        verbose_name = "Conquista do Usuário"
+        verbose_name_plural = "Conquistas dos Usuários"
+        unique_together = [['user', 'achievement']]  # Each achievement earned once per user
+        ordering = ['-earned_at']
+        indexes = [
+            models.Index(fields=['user', '-earned_at']),
+            models.Index(fields=['achievement']),
+        ]
+
+    def __str__(self):
+        return f"{self.user.username} - {self.achievement.name}"
