@@ -30,6 +30,35 @@
           <div class="text-sm text-gray-700">
             👋 {{ authStore.user?.first_name || 'User' }}
           </div>
+
+          <!-- XP and Level Display -->
+          <div v-if="authStore.user?.profile" class="flex items-center space-x-3 px-3 py-1 bg-gradient-to-r from-primary-50 to-purple-50 rounded-lg border border-primary-200">
+            <!-- Level Badge -->
+            <div class="flex items-center space-x-1">
+              <span class="text-xs font-semibold text-primary-700">⭐ Level</span>
+              <span class="text-sm font-bold text-primary-900">{{ authStore.user.profile.level }}</span>
+            </div>
+
+            <!-- Vertical Divider -->
+            <div class="h-6 w-px bg-primary-300"></div>
+
+            <!-- XP Progress -->
+            <div class="flex flex-col">
+              <div class="flex items-center space-x-2">
+                <span class="text-xs text-gray-600">
+                  {{ authStore.user.profile.xp_for_current_level }} / {{ authStore.user.profile.xp_for_next_level }} XP
+                </span>
+              </div>
+              <!-- Progress Bar -->
+              <div class="w-24 h-1.5 bg-gray-200 rounded-full overflow-hidden mt-0.5">
+                <div
+                  class="h-full bg-gradient-to-r from-primary-500 to-purple-500 rounded-full transition-all duration-300"
+                  :style="{ width: `${authStore.user.profile.progress_to_next_level}%` }"
+                ></div>
+              </div>
+            </div>
+          </div>
+
           <router-link
             to="/profile"
             class="text-gray-600 hover:text-gray-900"

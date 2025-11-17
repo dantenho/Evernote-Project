@@ -156,10 +156,12 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useLearningStore } from '@/stores/learning'
+import { useAuthStore } from '@/stores/auth'
 
 const route = useRoute()
 const router = useRouter()
 const learningStore = useLearningStore()
+const authStore = useAuthStore()
 
 const loading = ref(true)
 const error = ref(null)
@@ -271,8 +273,17 @@ const completeStep = async () => {
   const result = await learningStore.completeStep(stepId.value)
 
   if (result.success) {
-    // Optionally show success message
-    console.log('Step marked as complete!')
+    // Refresh user profile to update XP and level in navbar
+    await authStore.fetchProfile()
+
+    // Log XP earned if available
+    if (result.data?.xp_earned) {
+      console.log(`🎉 Step complete! +${result.data.xp_earned} XP earned!`)
+
+      if (result.data.leveled_up) {
+        console.log(`🌟 LEVEL UP! You reached level ${result.data.level}!`)
+      }
+    }
   } else {
     error.value = 'Failed to mark step as complete. Please try again.'
   }

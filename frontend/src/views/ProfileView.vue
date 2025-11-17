@@ -123,8 +123,8 @@
           </div>
         </div>
 
-        <!-- Account Stats (Optional) -->
-        <div class="card bg-gradient-to-br from-primary-50 to-green-100">
+        <!-- Account Stats -->
+        <div class="card bg-gradient-to-br from-primary-50 to-purple-50">
           <h2 class="text-xl font-bold text-gray-900 mb-4">Your Learning Journey</h2>
 
           <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -136,21 +136,46 @@
             </div>
 
             <div class="text-center">
-              <div class="text-2xl font-bold text-primary-700">-</div>
+              <div class="text-2xl font-bold text-purple-700">
+                {{ authStore.user?.profile?.xp_points || 0 }}
+              </div>
               <div class="text-sm text-gray-600">Total XP</div>
             </div>
 
             <div class="text-center">
-              <div class="text-2xl font-bold text-primary-700">-</div>
-              <div class="text-sm text-gray-600">Streak</div>
+              <div class="text-2xl font-bold text-green-700">
+                ⭐ {{ authStore.user?.profile?.level || 1 }}
+              </div>
+              <div class="text-sm text-gray-600">Level</div>
             </div>
 
             <div class="text-center">
-              <div class="text-2xl font-bold text-primary-700">-</div>
+              <div class="text-2xl font-bold text-orange-700">
+                {{ achievementsCount }}
+              </div>
               <div class="text-sm text-gray-600">Achievements</div>
             </div>
           </div>
+
+          <!-- Level Progress Bar -->
+          <div v-if="authStore.user?.profile" class="mt-6">
+            <div class="flex items-center justify-between text-sm text-gray-700 mb-2">
+              <span>Progress to Level {{ (authStore.user.profile.level || 1) + 1 }}</span>
+              <span class="font-semibold">
+                {{ authStore.user.profile.xp_for_current_level }} / {{ authStore.user.profile.xp_for_next_level }} XP
+              </span>
+            </div>
+            <div class="w-full h-3 bg-white rounded-full overflow-hidden shadow-inner">
+              <div
+                class="h-full bg-gradient-to-r from-primary-500 via-purple-500 to-pink-500 rounded-full transition-all duration-500"
+                :style="{ width: `${authStore.user.profile.progress_to_next_level}%` }"
+              ></div>
+            </div>
+          </div>
         </div>
+
+        <!-- Achievements Section -->
+        <AchievementsList ref="achievementsListRef" @achievements-loaded="updateAchievementsCount" />
       </div>
     </div>
   </div>
@@ -160,6 +185,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import AchievementsList from '@/components/AchievementsList.vue'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -168,6 +194,8 @@ const loading = ref(true)
 const saving = ref(false)
 const error = ref(null)
 const success = ref(null)
+const achievementsCount = ref(0)
+const achievementsListRef = ref(null)
 
 const form = ref({
   first_name: '',
@@ -182,24 +210,6 @@ const daysSinceJoined = computed(() => {
   const now = new Date()
   const diffMs = now - joinDate
   return Math.floor(diffMs / (1000 * 60 * 60 * 24))
-})
-
-onMounted(async () => {
-  loading.value = true
-  error.value = null
-
-  try {
-    // Fetch fresh profile data
-    await authStore.fetchProfile()
-
-    // Initialize form with current data
-    resetForm()
-  } catch (err) {
-    error.value = 'Failed to load profile. Please try again.'
-    console.error('Profile load error:', err)
-  } finally {
-    loading.value = false
-  }
 })
 
 const resetForm = () => {
@@ -235,4 +245,40 @@ const handleLogout = async () => {
   await authStore.logout()
   router.push('/login')
 }
+
+const updateAchievementsCount = (count) => {
+  achievementsCount.value = count
+}
+
+// Load achievements count on mount
+const loadAchievementsCount = async () => {
+  try {
+    const { gamificationAPI } = await import('@/services/api')
+    const response = await gamificationAPI.getMyAchievements()
+    achievementsCount.value = response.data.earned_achievements
+  } catch (err) {
+    console.error('Failed to load achievements count:', err)
+  }
+}
+
+onMounted(async () => {
+  loading.value = true
+  error.value = null
+
+  try {
+    // Fetch fresh profile data
+    await authStore.fetchProfile()
+
+    // Load achievements count
+    await loadAchievementsCount()
+
+    // Initialize form with current data
+    resetForm()
+  } catch (err) {
+    error.value = 'Failed to load profile. Please try again.'
+    console.error('Profile load error:', err)
+  } finally {
+    loading.value = false
+  }
+})
 </script>

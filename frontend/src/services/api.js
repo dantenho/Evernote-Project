@@ -445,6 +445,38 @@ export const progressAPI = {
   },
 }
 
+/**
+ * Gamification API endpoints
+ */
+export const gamificationAPI = {
+  /**
+   * Get current user's gamification profile
+   *
+   * @returns {Promise} Axios promise with profile data (XP, level, progress)
+   */
+  getProfile() {
+    return apiClient.get('/profile/gamification/')
+  },
+
+  /**
+   * Get all achievements earned by current user
+   *
+   * @returns {Promise} Axios promise with user achievements and statistics
+   */
+  getMyAchievements() {
+    return apiClient.get('/my-achievements/')
+  },
+
+  /**
+   * Get list of all available achievements in the system
+   *
+   * @returns {Promise} Axios promise with all achievements array
+   */
+  getAvailableAchievements() {
+    return apiClient.get('/achievements/')
+  },
+}
+
 // ============================================================================
 // Export Default
 // ============================================================================
